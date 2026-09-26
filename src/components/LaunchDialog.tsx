@@ -22,9 +22,12 @@ function suggestBranch(task: string): string {
 
 export function LaunchDialog({
   initialWorktree,
+  seed,
   onClose,
 }: {
   initialWorktree: string | null;
+  /** Duplicate's starting point: the task and harness to begin from. */
+  seed?: { task: string; kind: AgentKind } | null;
   onClose: () => void;
 }) {
   const state = useAppState();
@@ -40,9 +43,9 @@ export function LaunchDialog({
   const [where, setWhere] = useState(initialWorktree ?? worktrees[0]?.id ?? NEW_WORKTREE);
   const [branch, setBranch] = useState("");
   const [branchTouched, setBranchTouched] = useState(false);
-  const [kind, setKind] = useState<AgentKind>("claude");
+  const [kind, setKind] = useState<AgentKind>(seed?.kind ?? "claude");
   const [preset, setPreset] = useState<string>("");
-  const [task, setTask] = useState("");
+  const [task, setTask] = useState(seed?.task ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const taskBox = useRef<HTMLTextAreaElement>(null);
@@ -50,7 +53,7 @@ export function LaunchDialog({
   useEffect(() => {
     void readSettings().then((s) => {
       setSettings(s);
-      setKind(defaultKind(s));
+      if (!seed) setKind(defaultKind(s));
       if (s.quick_prompt_new_worktree === true && !initialWorktree) setWhere(NEW_WORKTREE);
     });
     void readPresets().then(setPresets);

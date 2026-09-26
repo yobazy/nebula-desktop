@@ -110,7 +110,7 @@ export function BandRunLine({ worktree }: { worktree: Worktree }) {
 
 /** No run command anywhere: type one (saved as the project's Run command
  *  setting, which the TUI shares), or hand the question to an agent. */
-function RunSetupDialog({
+export function RunSetupDialog({
   worktree,
   onClose,
   onSaved,

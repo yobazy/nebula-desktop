@@ -358,6 +358,8 @@ const SHORTCUTS: [string, string][] = [
   ["⌘J", "Next session waiting on you"],
   ["⌘U", "Claude usage"],
   ["⌘,", "Settings"],
+  ["⌘B", "Hide or show the projects sidebar"],
+  ["⌥⌘B", "Hide or show the tasks column"],
   ["⇧↵", "Newline in a Claude Code prompt"],
 ];
 

@@ -29,11 +29,12 @@ export function useWindowWidth(): number {
 }
 
 /** The widths actually laid out: the remembered ones, shrunk (tasks column
- *  first) until the terminal keeps its minimum in a narrow window. */
-export function fitColumns(sidebar: number, sessions: number, windowWidth: number): [number, number] {
+ *  first) until the terminal keeps its minimum in a narrow window. A hidden
+ *  column (null) takes no room and lays out at 0. */
+export function fitColumns(sidebar: number | null, sessions: number | null, windowWidth: number): [number, number] {
   const room = windowWidth - TERMINAL_MIN;
-  const side = Math.max(SIDEBAR.min, Math.min(sidebar, room - SESSIONS.min));
-  const sess = Math.max(SESSIONS.min, Math.min(sessions, room - side));
+  const side = sidebar === null ? 0 : Math.max(SIDEBAR.min, Math.min(sidebar, room - (sessions === null ? 0 : SESSIONS.min)));
+  const sess = sessions === null ? 0 : Math.max(SESSIONS.min, Math.min(sessions, room - side));
   return [side, sess];
 }
 
@@ -120,4 +121,24 @@ export function Resizer({
       }}
     />
   );
+}
+
+/** A column hidden or shown, remembered across launches. */
+export function useHidden(key: string): [boolean, (v: boolean | ((v: boolean) => boolean)) => void] {
+  const storage = `nebula-desktop.hidden.${key}`;
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(storage) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(storage, hidden ? "1" : "0");
+    } catch {
+      // Ignore: storage may be unavailable.
+    }
+  }, [storage, hidden]);
+  return [hidden, setHidden];
 }

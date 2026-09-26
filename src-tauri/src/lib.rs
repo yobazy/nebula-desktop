@@ -26,6 +26,7 @@ pub fn run() {
             settings::write_project_setting,
             settings::read_desktop_prefs,
             settings::write_desktop_prefs,
+            settings::open_worktree,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

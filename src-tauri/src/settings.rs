@@ -111,3 +111,45 @@ pub fn read_desktop_prefs(app: AppHandle) -> Value {
 pub fn write_desktop_prefs(app: AppHandle, prefs: Value) -> Result<(), String> {
     settings::write_json(&desktop_path(&app)?, &prefs).map_err(|e| e.to_string())
 }
+
+/// A worktree's **Open**, resolved as the TUI's is: the project's
+/// `open_command` setting, else the `.nebula.json` "open" (the checkout's,
+/// then the main one's), run by the user's shell in the checkout — a login
+/// shell, since an app opened from Finder has almost no PATH. Ok(false)
+/// when neither sets one, so the caller can fall back to showing the folder.
+#[tauri::command]
+pub fn open_worktree(path: PathBuf, repo: String) -> Result<bool, String> {
+    use nebula_core::project_file::{self, ProjectCommand};
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let set = crate::daemon::read_settings()
+        .get("projects")
+        .and_then(|p| p.get(&repo))
+        .and_then(|e| e.get("open_command"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(String::from);
+    let command = match set {
+        Some(c) => c,
+        None => match project_file::lookup(&path, std::path::Path::new(&repo), ProjectCommand::Open)
+            .map_err(|e| e.to_string())?
+        {
+            Some(c) => c,
+            None => return Ok(false),
+        },
+    };
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    Command::new(shell)
+        .arg("-lc")
+        .arg(&command)
+        .current_dir(&path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| format!("couldn't run {command}: {e}"))?;
+    Ok(true)
+}

@@ -1860,3 +1860,89 @@ td.task-last {
     animation: none;
   }
 }
+
+/* ---------- context menu ---------- */
+
+.menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 14px 34px rgb(5 8 16 / 0.45);
+  outline: none;
+  animation: fade 90ms ease-out;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+.menu-item.is-hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.menu-item.is-destructive {
+  color: var(--st-waiting);
+}
+.menu-item.is-destructive.is-hover {
+  background: var(--st-waiting);
+  color: #ffffff;
+}
+.menu-rule {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.btn-danger {
+  background: var(--st-waiting);
+  border-color: var(--st-waiting);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--st-waiting) 85%, black);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}
+
+/* ---------- hidden columns ---------- */
+
+.column[hidden] {
+  display: none;
+}
+/* Buttons that bring hidden columns back, over the terminal's header. */
+.reveal {
+  position: absolute;
+  top: 17px;
+  z-index: 4;
+  display: flex;
+  gap: 2px;
+}
+.column-terminal .pane-head {
+  padding-left: calc(20px + var(--reveal-pad, 0px));
+}
+
+/* In a narrow band head the branch name is what must stay readable: the
+   "main checkout" note gives way first, then the name truncates — never
+   to nothing. */
+.band-branch {
+  flex: 0 1 auto;
+  min-width: 52px;
+}
+.band-note {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

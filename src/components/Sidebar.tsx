@@ -20,7 +20,7 @@ export function selectAgent(agent: Agent) {
   }));
 }
 
-export function Sidebar({ onAddProject }: { onAddProject: () => void }) {
+export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; onHide: () => void }) {
   const state = useAppState();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -64,6 +64,9 @@ export function Sidebar({ onAddProject }: { onAddProject: () => void }) {
         </span>
         <span className="sidebar-actions">
           <LinkDot />
+          <button className="icon-btn" title="Hide projects (⌘B)" aria-label="Hide projects" onClick={onHide}>
+            <PanelGlyph />
+          </button>
           <button
             className="icon-btn"
             title="Add project (⌘O)"
@@ -261,6 +264,16 @@ function GearGlyph() {
         strokeWidth="1.2"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** A window with its left panel marked: hide or show a column. */
+export function PanelGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M6 3v10" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }

@@ -12,6 +12,8 @@ import { request } from "../nebula/client";
 import { changedFiles, neverPushed, shipKind, type GitState, type GitStatus } from "../nebula/git";
 import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../nebula/actions";
 import { BandRunButton, BandRunLine, ProjectRun } from "./Run";
+import { useRowMenu, type Seed } from "./RowMenu";
+import { PanelGlyph } from "./Sidebar";
 import { sameSession, type Agent, type TerminalTab, type Worktree } from "../nebula/types";
 
 /** Re-render once a minute so relative times stay honest. */
@@ -23,9 +25,12 @@ function useMinuteTick() {
   }, []);
 }
 
-export function Sessions({ onNewTask }: { onNewTask: (worktree?: string) => void }) {
+type NewTask = (worktree?: string, seed?: Seed) => void;
+
+export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: () => void }) {
   const state = useAppState();
   useMinuteTick();
+  const rowMenu = useRowMenu(onNewTask);
   const project = state.selectedProject ? state.projects[state.selectedProject] : undefined;
   const worktrees = useMemo(
     () => (project ? projectWorktrees(state, project.id) : []),
@@ -50,6 +55,9 @@ export function Sessions({ onNewTask }: { onNewTask: (worktree?: string) => void
           </p>
         </div>
         <div className="sessions-actions">
+          <button className="icon-btn" title="Hide tasks (⌥⌘B)" aria-label="Hide tasks" onClick={onHide}>
+            <PanelGlyph />
+          </button>
           {worktrees[0]?.is_main && <ProjectRun worktree={worktrees[0]} />}
           <button className="btn btn-primary" onClick={() => onNewTask()} title="New task (⌘N)">
             New task
@@ -59,19 +67,24 @@ export function Sessions({ onNewTask }: { onNewTask: (worktree?: string) => void
 
       <div className="bands">
         {worktrees.map((wt) => (
-          <Band key={wt.id} worktree={wt} onNewTask={onNewTask} />
+          <Band key={wt.id} worktree={wt} onNewTask={onNewTask} onMenu={rowMenu.openFor} />
         ))}
       </div>
+      {rowMenu.element}
     </section>
   );
 }
 
+type OpenMenu = ReturnType<typeof useRowMenu>["openFor"];
+
 function Band({
   worktree,
   onNewTask,
+  onMenu,
 }: {
   worktree: Worktree;
-  onNewTask: (worktree?: string) => void;
+  onNewTask: NewTask;
+  onMenu: OpenMenu;
 }) {
   const state = useAppState();
   const [showArchived, setShowArchived] = useState(false);
@@ -119,12 +132,12 @@ function Band({
       <ul className="rows">
         {agents.map((a) => (
           <li key={a.id}>
-            <AgentRow agent={a} />
+            <AgentRow agent={a} onMenu={onMenu} />
           </li>
         ))}
         {terminals.map((t) => (
           <li key={t.id}>
-            <TerminalRow tab={t} />
+            <TerminalRow tab={t} onMenu={onMenu} />
           </li>
         ))}
         {agents.length === 0 && terminals.length === 0 && (
@@ -145,7 +158,7 @@ function Band({
             <ul className="rows rows-archived">
               {archived.map((a) => (
                 <li key={a.id}>
-                  <AgentRow agent={a} />
+                  <AgentRow agent={a} onMenu={onMenu} />
                 </li>
               ))}
             </ul>
@@ -288,13 +301,14 @@ function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
   );
 }
 
-function AgentRow({ agent }: { agent: Agent }) {
+function AgentRow({ agent, onMenu }: { agent: Agent; onMenu: OpenMenu }) {
   const selected = sameSession(useAppState().selectedSession, { Agent: agent.id });
   const prompt = lastPrompt(agent);
   return (
     <button
       className={`row row-${agent.status}${selected ? " is-selected" : ""}${agent.unseen ? " is-unseen" : ""}`}
       onClick={() => setState({ selectedSession: { Agent: agent.id } })}
+      onContextMenu={(e) => onMenu(e, { Agent: agent })}
       aria-current={selected ? "true" : undefined}
     >
       <span
@@ -311,12 +325,13 @@ function AgentRow({ agent }: { agent: Agent }) {
   );
 }
 
-function TerminalRow({ tab }: { tab: TerminalTab }) {
+function TerminalRow({ tab, onMenu }: { tab: TerminalTab; onMenu: OpenMenu }) {
   const selected = sameSession(useAppState().selectedSession, { Terminal: tab.id });
   return (
     <button
       className={`row row-terminal${selected ? " is-selected" : ""}`}
       onClick={() => setState({ selectedSession: { Terminal: tab.id } })}
+      onContextMenu={(e) => onMenu(e, { Terminal: tab })}
     >
       <span className="row-glyph" aria-hidden>
         <ShellGlyph />
