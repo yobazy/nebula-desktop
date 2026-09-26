@@ -1946,3 +1946,72 @@ td.task-last {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------- project icons ---------- */
+
+.picon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  object-fit: contain;
+  line-height: 1;
+  user-select: none;
+}
+/* A letter on a color of its own, soft enough to sit beside the name. */
+.picon-mono {
+  font-weight: 700;
+  color: hsl(var(--hue) 55% 88%);
+  background: hsl(var(--hue) 38% 32%);
+}
+:root[data-mode="light"] .picon-mono {
+  color: hsl(var(--hue) 50% 28%);
+  background: hsl(var(--hue) 60% 88%);
+}
+.sessions-title h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.icon-picker-head h2 {
+  margin: 0;
+}
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+.emoji-cell {
+  aspect-ratio: 1;
+  font-size: 20px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--night);
+}
+.emoji-cell:hover,
+.emoji-cell:focus-visible {
+  background: var(--raised);
+  outline: none;
+}
+.emoji-cell.is-on {
+  border-color: var(--accent);
+}
+.emoji-typed {
+  display: flex;
+  gap: 8px;
+}
+.emoji-typed .setting-input {
+  flex: 1;
+  width: auto;
+}
+.icon-picker-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -1,5 +1,6 @@
 mod daemon;
 mod git;
+mod icons;
 mod nebula_setup;
 mod settings;
 mod usage;
@@ -30,6 +31,8 @@ pub fn run() {
             settings::open_worktree,
             nebula_setup::nebula_status,
             nebula_setup::install_nebula,
+            icons::read_icon,
+            icons::project_logo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

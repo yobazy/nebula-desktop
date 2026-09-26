@@ -43,6 +43,8 @@ export interface State {
   minute: number;
   /** Where each run terminal is serving, read off its output (runs.ts). */
   runUrls: Record<string, string>;
+  /** Each project's own logo, by repo path; null when it keeps none (icons.ts). */
+  logos: Record<string, string | null>;
   /** A one-line flash at the bottom of the window, e.g. "x is already a project". */
   notice: string | null;
 }
@@ -72,6 +74,7 @@ let state: State = {
   git: {},
   view: "sessions",
   runUrls: {},
+  logos: {},
   theme: "default",
   prefs: {},
   mode: "dark",

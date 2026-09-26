@@ -14,6 +14,7 @@ import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../ne
 import { BandRunButton, BandRunLine, ProjectRun } from "./Run";
 import { useRowMenu, type Seed } from "./RowMenu";
 import { PanelGlyph } from "./Sidebar";
+import { ProjectIcon } from "./ProjectIcon";
 import { sameSession, type Agent, type TerminalTab, type Worktree } from "../nebula/types";
 
 /** Re-render once a minute so relative times stay honest. */
@@ -49,7 +50,10 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
     <section className="sessions" aria-label={`${project.name} sessions`}>
       <header className="sessions-head" data-tauri-drag-region>
         <div className="sessions-title" data-tauri-drag-region>
-          <h1>{project.name}</h1>
+          <h1>
+            <ProjectIcon project={project} size={22} />
+            {project.name}
+          </h1>
           <p className="sessions-path" title={project.repo_path}>
             {project.repo_path.replace(/^\/Users\/[^/]+/, "~")}
           </p>

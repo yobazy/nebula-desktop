@@ -35,7 +35,11 @@ export interface DesktopPrefs {
   mode?: Mode;
   /** The sidebar cat (`Pet.tsx`); on unless turned off. */
   pet?: boolean;
+  /** Icons picked for projects, by repo path (`icons.ts`). */
+  projectIcons?: Record<string, ProjectIconChoice>;
 }
+
+export type ProjectIconChoice = { kind: "emoji"; value: string } | { kind: "image"; value: string };
 
 export async function loadPrefs(): Promise<DesktopPrefs> {
   if (isPreview()) {

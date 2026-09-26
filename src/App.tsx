@@ -16,6 +16,7 @@ import { useUsagePolling } from "./nebula/usage";
 import { useTheme } from "./nebula/theme";
 import { useRunWatch } from "./nebula/runs";
 import { useProjectSessions } from "./nebula/focus";
+import { useProjectLogos } from "./nebula/icons";
 import { getState, setState, subscribe, useAppState, waitingAgents } from "./nebula/store";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
   useTheme();
   useRunWatch();
   useProjectSessions();
+  useProjectLogos();
   useMinuteClock();
   useLeaveUsageOnSelect();
   const view = useAppState().view;

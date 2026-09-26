@@ -12,6 +12,7 @@ import { relativeTime } from "../nebula/status";
 import type { Agent, Project } from "../nebula/types";
 import { UsageChip } from "./Usage";
 import { Pet } from "./Pet";
+import { ProjectIcon, useProjectMenu } from "./ProjectIcon";
 
 export function selectAgent(agent: Agent) {
   setState((s) => ({
@@ -24,6 +25,7 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
   const state = useAppState();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
+  const projectMenu = useProjectMenu();
 
   const projects = useMemo(() => sortedProjects(state), [state]);
   const waiting = useMemo(() => waitingAgents(state), [state]);
@@ -133,6 +135,7 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
                 (t) => t.alive && t.run_command !== null && state.worktrees[t.worktree_id]?.project_id === p.id,
               )}
               selected={p.id === state.selectedProject}
+              onMenu={projectMenu.openFor}
             />
           </li>
         ))}
@@ -152,6 +155,7 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
         )}
       </ul>
 
+      {projectMenu.element}
       <Pet on={state.prefs.pet !== false} />
       <footer className="sidebar-foot">
         <UsageChip />
@@ -175,12 +179,14 @@ function ProjectRow({
   agents,
   selected,
   live,
+  onMenu,
 }: {
   project: Project;
   index: number | null;
   agents: Agent[];
   selected: boolean;
   live: boolean;
+  onMenu: (e: React.MouseEvent, project: Project) => void;
 }) {
   const needs = agents.filter((a) => a.status === "needs_feedback").length;
   const unseen = agents.filter((a) => a.status === "finished" && a.unseen).length;
@@ -200,10 +206,12 @@ function ProjectRow({
     <button
       className={`project-row${selected ? " is-selected" : ""}`}
       onClick={() => setState({ selectedProject: project.id })}
+      onContextMenu={(e) => onMenu(e, project)}
       aria-current={selected ? "page" : undefined}
       title={project.repo_path}
     >
       <span className="project-line">
+        <ProjectIcon project={project} />
         <span className="project-name">{project.name}</span>
         {live && <span className="live-dot" title="Dev server running" aria-label="Dev server running" />}
         <span className="project-meta">
