@@ -16,6 +16,28 @@
 It talks to the same daemon as the `nebula` TUI, so both can be open at once on the same sessions.
 Close either one and your agents keep running.
 
+## Install
+
+One command sets up nebula and the app together, on macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yobazy/nebula-desktop/main/scripts/setup.sh | bash
+```
+
+Or from a clone: `./scripts/setup.sh`. It:
+
+1. Checks for the build tools (Xcode command line tools, Node 20+, Rust) and offers to install
+   any that are missing.
+2. Installs [nebula](https://github.com/AgentSystemLabs/nebula) at the exact version this app is
+   built against, since the daemon only talks to clients built for its own version. If you already
+   have a different nebula, it tells you and asks before changing anything.
+3. Makes sure your login shell can find `nebula`, which the app uses to start the daemon.
+4. Builds the app, installs it to `/Applications`, and opens it.
+
+Run it again any time to update. `--check` shows what it would do without changing anything,
+and `--help` lists the other options. You'll also want an agent CLI for nebula to run, such as
+[Claude Code](https://code.claude.com/docs/en/setup).
+
 ## What it does
 
 **Sessions**
@@ -72,7 +94,7 @@ follows them.
 yarn ball, naps, and sits up when an agent starts waiting on you. Click it to say hi, or turn it
 off in Settings.
 
-## Running
+## Building from source
 
 ```sh
 npm install
@@ -91,7 +113,8 @@ by tag in `src-tauri/Cargo.toml`:
 nebula-core = { git = "https://github.com/AgentSystemLabs/nebula", tag = "v0.40.2" }
 ```
 
-After `nebula upgrade`, bump the tag and rebuild. If the protocol changed, `src/nebula/types.ts`
+After `nebula upgrade`, bump the tag and rebuild (`./scripts/setup.sh` picks up the new tag and
+checks your nebula matches it). If the protocol changed, `src/nebula/types.ts`
 may need the same change; the e2e check below catches drift. On a mismatch the app shows a
 "doesn't match" screen rather than misbehaving.
 
