@@ -2015,3 +2015,86 @@ td.task-last {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ---------- project colors ---------- */
+
+/* --pc is the project's hue; each surface picks a shade that reads on it. */
+.project-row.has-color,
+.sessions.has-color,
+.project-dot,
+.color-swatch {
+  --pc-ink: hsl(var(--pc) 72% 64%);
+}
+:root[data-mode="light"] .project-row.has-color,
+:root[data-mode="light"] .sessions.has-color,
+:root[data-mode="light"] .project-dot,
+:root[data-mode="light"] .color-swatch {
+  --pc-ink: hsl(var(--pc) 62% 46%);
+}
+.project-row {
+  position: relative;
+}
+/* A bar down the row's left edge. */
+.project-row.has-color::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--pc-ink);
+}
+.project-row.has-color.is-selected {
+  background: color-mix(in srgb, var(--pc-ink) 12%, var(--panel));
+}
+/* The open project's color runs across the top of its column. */
+.sessions.has-color {
+  box-shadow: inset 0 3px 0 var(--pc-ink);
+}
+.project-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--pc-ink);
+  vertical-align: 1px;
+}
+
+.picker-section {
+  margin-bottom: -6px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.color-row {
+  display: flex;
+  gap: 8px;
+}
+.color-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--pc-ink);
+  box-shadow: inset 0 0 0 2px var(--panel);
+}
+.color-swatch.is-on {
+  border-color: var(--text);
+}
+.color-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* "No color": an outlined circle with a slash. */
+.color-none {
+  background: linear-gradient(135deg, transparent 45%, var(--faint) 45%, var(--faint) 55%, transparent 55%);
+  border-color: var(--line);
+  box-shadow: none;
+}
+.color-none.is-on {
+  border-color: var(--text);
+}

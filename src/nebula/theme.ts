@@ -37,6 +37,8 @@ export interface DesktopPrefs {
   pet?: boolean;
   /** Icons picked for projects, by repo path (`icons.ts`). */
   projectIcons?: Record<string, ProjectIconChoice>;
+  /** Colors picked for projects, by repo path: a PROJECT_COLORS name. */
+  projectColors?: Record<string, string>;
 }
 
 export type ProjectIconChoice = { kind: "emoji"; value: string } | { kind: "image"; value: string };

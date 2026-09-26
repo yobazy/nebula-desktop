@@ -12,7 +12,7 @@ import { relativeTime } from "../nebula/status";
 import type { Agent, Project } from "../nebula/types";
 import { UsageChip } from "./Usage";
 import { Pet } from "./Pet";
-import { ProjectIcon, useProjectMenu } from "./ProjectIcon";
+import { ProjectIcon, useProjectColorStyle, useProjectMenu } from "./ProjectIcon";
 
 export function selectAgent(agent: Agent) {
   setState((s) => ({
@@ -92,7 +92,10 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
                   <span className="sdot dot-needs_feedback" aria-hidden />
                   <span className="waiting-name">{a.name}</span>
                   <span className="waiting-where">
-                    {projectOfWorktree(state, a.worktree_id)?.name}
+                    <span>
+                      <ProjectDot project={projectOfWorktree(state, a.worktree_id)} />
+                      {projectOfWorktree(state, a.worktree_id)?.name}
+                    </span>
                     <span className="waiting-age">{relativeTime(a.status_changed_at)}</span>
                   </span>
                 </button>
@@ -201,10 +204,12 @@ function ProjectRow({
   ]
     .filter(Boolean)
     .join(", ");
+  const colorStyle = useProjectColorStyle(project);
 
   return (
     <button
-      className={`project-row${selected ? " is-selected" : ""}`}
+      className={`project-row${selected ? " is-selected" : ""}${colorStyle ? " has-color" : ""}`}
+      style={colorStyle}
       onClick={() => setState({ selectedProject: project.id })}
       onContextMenu={(e) => onMenu(e, project)}
       aria-current={selected ? "page" : undefined}
@@ -284,4 +289,10 @@ export function PanelGlyph() {
       <path d="M6 3v10" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
+}
+
+/** A small dot in the project's color, when it has one. */
+function ProjectDot({ project }: { project: Project | undefined }) {
+  const style = useProjectColorStyle(project);
+  return style ? <span className="project-dot" style={style} aria-hidden /> : null;
 }

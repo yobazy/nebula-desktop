@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { isPreview } from "../nebula/client";
-import { iconFor, pickIconImage, setProjectIcon, type ShownIcon } from "../nebula/icons";
+import {
+  colorOf,
+  iconFor,
+  pickIconImage,
+  PROJECT_COLORS,
+  setProjectColor,
+  setProjectIcon,
+  type ShownIcon,
+} from "../nebula/icons";
 import { flash, useAppState } from "../nebula/store";
 import type { Project } from "../nebula/types";
 import { ContextMenu, type MenuItem } from "./Menu";
 
 export function ProjectIcon({ project, size = 18 }: { project: Project; size?: number }) {
   const { prefs, logos } = useAppState();
-  return <IconView icon={iconFor(project, prefs.projectIcons, logos)} size={size} />;
+  return <IconView icon={iconFor(project, prefs.projectIcons, logos, prefs.projectColors)} size={size} />;
 }
 
 function IconView({ icon, size }: { icon: ShownIcon; size: number }) {
@@ -35,10 +43,11 @@ function firstGrapheme(text: string): string {
   return seg.segment(text.trim())[Symbol.iterator]().next().value?.segment ?? "";
 }
 
-/** Pick an emoji or an image for a project, or go back to its default. */
+/** Pick an emoji or an image and a color for a project, or go back to its defaults. */
 export function IconPicker({ project, onClose }: { project: Project; onClose: () => void }) {
   const { prefs, logos } = useAppState();
   const picked = prefs.projectIcons?.[project.repo_path];
+  const color = prefs.projectColors?.[project.repo_path] ?? null;
   const logo = logos[project.repo_path];
   const [typed, setTyped] = useState("");
   const dialog = useRef<HTMLDivElement>(null);
@@ -58,9 +67,36 @@ export function IconPicker({ project, onClose }: { project: Project; onClose: ()
       <div ref={dialog} className="dialog dialog-narrow icon-picker" role="dialog" aria-modal="true" aria-labelledby="icon-title">
         <header className="icon-picker-head">
           <ProjectIcon project={project} size={40} />
-          <h2 id="icon-title">Icon for {project.name}</h2>
+          <h2 id="icon-title">{project.name}</h2>
         </header>
 
+        <div className="picker-section" id="color-label">
+          Color
+        </div>
+        <div className="color-row" role="radiogroup" aria-labelledby="color-label">
+          <button
+            role="radio"
+            aria-checked={!color}
+            className={`color-swatch color-none${!color ? " is-on" : ""}`}
+            onClick={() => void setProjectColor(project.repo_path, null)}
+            title="No color"
+            aria-label="No color"
+          />
+          {PROJECT_COLORS.map((c) => (
+            <button
+              key={c.name}
+              role="radio"
+              aria-checked={color === c.name}
+              className={`color-swatch${color === c.name ? " is-on" : ""}`}
+              style={{ "--pc": c.hue } as React.CSSProperties}
+              onClick={() => void setProjectColor(project.repo_path, c.name).catch((e) => flash(String(e)))}
+              title={c.name}
+              aria-label={c.name}
+            />
+          ))}
+        </div>
+
+        <div className="picker-section">Icon</div>
         <div className="emoji-grid" role="group" aria-label="Emoji">
           {EMOJI.map((e) => (
             <button
@@ -143,9 +179,12 @@ export function useProjectMenu() {
   const openFor = (e: React.MouseEvent, project: Project) => {
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const items: MenuItem[] = [{ label: "Change icon…", run: () => setPicking(project) }];
-    if (prefs.projectIcons?.[project.repo_path]) {
-      items.push({ label: "Reset icon", run: () => void setProjectIcon(project.repo_path, null) });
+    const items: MenuItem[] = [{ label: "Icon & color…", run: () => setPicking(project) }];
+    if (prefs.projectIcons?.[project.repo_path] || prefs.projectColors?.[project.repo_path]) {
+      items.push({
+        label: "Reset icon & color",
+        run: () => void setProjectIcon(project.repo_path, null).then(() => setProjectColor(project.repo_path, null)),
+      });
     }
     items.push({
       label: "Show in Finder",
@@ -166,4 +205,12 @@ export function useProjectMenu() {
     </>
   );
   return { openFor, element };
+}
+
+/** A project's color as CSS custom properties (`--pc`, the hue), or
+ *  nothing when it has none. */
+export function useProjectColorStyle(project: Project | undefined): React.CSSProperties | undefined {
+  const { prefs } = useAppState();
+  const hue = project ? colorOf(project, prefs.projectColors) : null;
+  return hue === null ? undefined : ({ "--pc": hue } as React.CSSProperties);
 }

@@ -11,6 +11,33 @@ import type { Project } from "./types";
 
 export type ShownIcon = ProjectIconChoice | { kind: "monogram"; value: string; hue: number };
 
+/** The colors a project can be coded with, as hues: CSS turns each into a
+ *  shade that reads on the dark surfaces and a deeper one on light. */
+export const PROJECT_COLORS: { name: string; hue: number }[] = [
+  { name: "red", hue: 2 },
+  { name: "orange", hue: 26 },
+  { name: "yellow", hue: 45 },
+  { name: "green", hue: 142 },
+  { name: "teal", hue: 176 },
+  { name: "blue", hue: 214 },
+  { name: "purple", hue: 266 },
+  { name: "pink", hue: 326 },
+];
+
+/** A project's color as a hue, or null when it has none. */
+export function colorOf(project: Project, colors: Record<string, string> | undefined): number | null {
+  const name = colors?.[project.repo_path];
+  return PROJECT_COLORS.find((c) => c.name === name)?.hue ?? null;
+}
+
+export async function setProjectColor(repo: string, name: string | null) {
+  const prefs = getState().prefs;
+  const projectColors = { ...(prefs.projectColors ?? {}) };
+  if (name) projectColors[repo] = name;
+  else delete projectColors[repo];
+  await savePrefs({ ...prefs, projectColors });
+}
+
 /** A steady hue per project name, so each monogram keeps its color. */
 function hueOf(name: string): number {
   let h = 0;
@@ -18,13 +45,19 @@ function hueOf(name: string): number {
   return h % 360;
 }
 
-export function iconFor(project: Project, picked: Record<string, ProjectIconChoice> | undefined, logos: Record<string, string | null>): ShownIcon {
+export function iconFor(
+  project: Project,
+  picked: Record<string, ProjectIconChoice> | undefined,
+  logos: Record<string, string | null>,
+  colors?: Record<string, string>,
+): ShownIcon {
   const choice = picked?.[project.repo_path];
   if (choice) return choice;
   const logo = logos[project.repo_path];
   if (logo) return { kind: "image", value: logo };
   const letter = [...project.name.replace(/^[^\p{L}\p{N}]+/u, "")][0]?.toUpperCase() ?? "?";
-  return { kind: "monogram", value: letter, hue: hueOf(project.name) };
+  // A coded project's letter wears its color.
+  return { kind: "monogram", value: letter, hue: colorOf(project, colors) ?? hueOf(project.name) };
 }
 
 export async function setProjectIcon(repo: string, choice: ProjectIconChoice | null) {

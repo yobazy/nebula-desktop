@@ -14,7 +14,7 @@ import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../ne
 import { BandRunButton, BandRunLine, ProjectRun } from "./Run";
 import { useRowMenu, type Seed } from "./RowMenu";
 import { PanelGlyph } from "./Sidebar";
-import { ProjectIcon } from "./ProjectIcon";
+import { ProjectIcon, useProjectColorStyle } from "./ProjectIcon";
 import { sameSession, type Agent, type TerminalTab, type Worktree } from "../nebula/types";
 
 /** Re-render once a minute so relative times stay honest. */
@@ -32,6 +32,7 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
   const state = useAppState();
   useMinuteTick();
   const rowMenu = useRowMenu(onNewTask);
+  const colorStyle = useProjectColorStyle(state.selectedProject ? state.projects[state.selectedProject] : undefined);
   const project = state.selectedProject ? state.projects[state.selectedProject] : undefined;
   const worktrees = useMemo(
     () => (project ? projectWorktrees(state, project.id) : []),
@@ -47,7 +48,11 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
   }
 
   return (
-    <section className="sessions" aria-label={`${project.name} sessions`}>
+    <section
+      className={`sessions${colorStyle ? " has-color" : ""}`}
+      style={colorStyle}
+      aria-label={`${project.name} sessions`}
+    >
       <header className="sessions-head" data-tauri-drag-region>
         <div className="sessions-title" data-tauri-drag-region>
           <h1>
