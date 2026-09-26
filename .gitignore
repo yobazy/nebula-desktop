@@ -25,3 +25,6 @@ dist-ssr
 
 # Dev sandbox daemon data (scripts/sandbox.sh)
 .sandbox
+
+# Release downloads (see README, Releasing)
+*.dmg

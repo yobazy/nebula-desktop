@@ -188,8 +188,13 @@ pub async fn send_input(
 pub fn start_daemon() -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    // By its full path when found, so a nebula this app installed into
+    // ~/.local/bin starts even if the shell profile doesn't put it on PATH.
+    let nebula = crate::nebula_setup::find()
+        .map(|p| format!("'{}'", p.display().to_string().replace('\'', "'\\''")))
+        .unwrap_or_else(|| "nebula".into());
     let mut cmd = std::process::Command::new(shell);
-    cmd.args(["-l", "-i", "-c", "exec nebula daemon"])
+    cmd.args(["-l", "-i", "-c", &format!("exec {nebula} daemon")])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());

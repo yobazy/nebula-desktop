@@ -18,25 +18,29 @@ Close either one and your agents keep running.
 
 ## Install
 
-One command sets up nebula and the app together, on macOS:
+**[Download Nebula Desktop](https://github.com/yobazy/nebula-desktop/releases/latest/download/Nebula-Desktop.dmg)**
+(macOS, Apple Silicon and Intel), open it, and drag the app into Applications.
+
+The first time you open it, it installs [nebula](https://github.com/AgentSystemLabs/nebula) for you,
+at the exact version the app is built for, and starts it. You'll also want an agent CLI for nebula
+to run, such as [Claude Code](https://code.claude.com/docs/en/setup).
+
+> The app isn't notarized by Apple yet, so macOS blocks its first launch. Open **System Settings →
+> Privacy & Security**, find "Nebula Desktop was blocked", and click **Open Anyway**. You only do
+> this once.
+
+### Or build it yourself
+
+One command installs the build tools it needs, nebula, and the app:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yobazy/nebula-desktop/main/scripts/setup.sh | bash
 ```
 
-Or from a clone: `./scripts/setup.sh`. It:
-
-1. Checks for the build tools (Xcode command line tools, Node 20+, Rust) and offers to install
-   any that are missing.
-2. Installs [nebula](https://github.com/AgentSystemLabs/nebula) at the exact version this app is
-   built against, since the daemon only talks to clients built for its own version. If you already
-   have a different nebula, it tells you and asks before changing anything.
-3. Makes sure your login shell can find `nebula`, which the app uses to start the daemon.
-4. Builds the app, installs it to `/Applications`, and opens it.
-
-Run it again any time to update. `--check` shows what it would do without changing anything,
-and `--help` lists the other options. You'll also want an agent CLI for nebula to run, such as
-[Claude Code](https://code.claude.com/docs/en/setup).
+Or from a clone: `./scripts/setup.sh`. It checks for Xcode's command line tools, Node 20+ and
+Rust (offering to install what's missing), installs nebula at the pinned version (asking before it
+replaces a different one), builds the app into `/Applications`, and opens it. `--check` shows what
+it would do without changing anything, and `--help` lists the other options.
 
 ## What it does
 
@@ -146,3 +150,15 @@ handy for styling, and needs no daemon. The screenshots and the demo above are f
   and the cat (`petBrain.ts` is its behavior, separate from the drawing).
 - `src-tauri/icons/app-icon.svg`: the icon's source. Regenerate the set with
   `npx tauri icon src-tauri/icons/app-icon.svg`.
+- `scripts/dmg-background.py`: draws the DMG window's background; the layout is under
+  `bundle.macOS.dmg` in `src-tauri/tauri.conf.json`.
+
+## Releasing
+
+```sh
+npm run tauri build -- --target universal-apple-darwin --bundles dmg
+cp "src-tauri/target/universal-apple-darwin/release/bundle/dmg/Nebula Desktop_X.Y.Z_universal.dmg" Nebula-Desktop.dmg
+gh release create vX.Y.Z Nebula-Desktop.dmg --generate-notes
+```
+
+The asset must be named `Nebula-Desktop.dmg`: the README's download link points at it.

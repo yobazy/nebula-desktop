@@ -142,7 +142,36 @@ export function debugLog(msg: string) {
 }
 
 export function startDaemon(): Promise<void> {
+  if (isPreview()) return Promise.resolve();
   return invoke("start_daemon");
+}
+
+export interface NebulaStatus {
+  /** The nebula version this app is built for. */
+  pinned: string;
+  path: string | null;
+  version: string | null;
+}
+
+/** The preview's stand-in for the startup screen's states: `?gate=missing`,
+ *  `older`, `newer` or `stopped` in the URL. */
+export const PREVIEW_GATE = PREVIEW ? new URLSearchParams(location.search).get("gate") : null;
+
+export function nebulaStatus(): Promise<NebulaStatus> {
+  if (isPreview()) {
+    const fakes: Record<string, string | null> = { missing: null, older: "0.39.0", newer: "0.41.0" };
+    const version = PREVIEW_GATE && PREVIEW_GATE in fakes ? fakes[PREVIEW_GATE] : "0.40.2";
+    return Promise.resolve({ pinned: "0.40.2", path: version ? "~/.local/bin/nebula" : null, version });
+  }
+  return invoke("nebula_status");
+}
+
+/** Install the nebula release this app is built for (nebula_setup.rs). */
+export function installNebula(): Promise<NebulaStatus> {
+  if (isPreview()) {
+    return new Promise((r) => setTimeout(() => r({ pinned: "0.40.2", path: "~/.local/bin/nebula", version: "0.40.2" }), 1200));
+  }
+  return invoke("install_nebula");
 }
 
 // ---- PTY routing ----
@@ -276,6 +305,8 @@ export async function start() {
   if (PREVIEW) {
     const { startMock } = await import("./mock");
     mockSend = startMock(ptyHandlers);
+    // Show the startup screen in one of its states instead of the demo.
+    if (PREVIEW_GATE) setState({ loaded: false, link: { state: "disconnected", reason: "No nebula daemon is listening." } });
     return;
   }
   await listen<ServerEvent>("nebula://event", (e) => handle(e.payload));
