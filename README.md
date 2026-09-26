@@ -9,14 +9,18 @@
   daemon that runs your coding agents across a project's git worktrees.
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" width="880" alt="Demo: opening a task that's waiting on you, switching projects, shipping a branch with one click, starting the dev server, the right-click task menu, Claude usage, and switching color themes">
+</p>
+
 It talks to the same daemon as the `nebula` TUI, so both can be open at once on the same sessions.
 Close either one and your agents keep running.
-
-![Sessions: projects on the left, each worktree's tasks with its git state in the middle, the selected agent's terminal on the right](docs/screenshots/sessions.jpg)
 
 ## What it does
 
 **Sessions**
+
+![Sessions: projects on the left, each worktree's tasks with its git state in the middle, the selected agent's terminal on the right](docs/screenshots/sessions.jpg)
 
 - **Projects sidebar**: filter it with `⌘P` and jump with `⌘1`–`⌘9`. Each project shows one bar
   segment per session, a spinner with the number of tasks in progress, and badges for tasks waiting
@@ -27,6 +31,9 @@ Close either one and your agents keep running.
 - **Worktree bands**: sessions grouped by branch, with the ones that need you first. Switching
   projects brings back the session you last had open there.
 - **Terminal**: attach to any agent or shell. Shift+Enter inserts a newline in Claude Code.
+- **Right-click a task** for the TUI's menu: follow-up prompt, restart, duplicate, rename,
+  archive, run or stop the dev server, open the worktree, delete.
+- **Hide either column** with `⌘B` (projects) and `⌥⌘B` (tasks), or drag them to resize.
 - **New task** (`⌘N`): on an existing branch or a new worktree (the branch name is suggested from
   the task), with your choice of agent and preset.
 
@@ -61,7 +68,7 @@ app shows up in the other. Rows that only affect the TUI's look are tagged. The 
 shared with the TUI; System, Dark, Black and Light are for the desktop app, and the terminal
 follows them.
 
-**And** resizable columns, and a pixel cat that plays at the bottom of the sidebar. It chases a
+**And** a pixel cat that plays at the bottom of the sidebar. It chases a
 yarn ball, naps, and sits up when an agent starts waiting on you. Click it to say hi, or turn it
 off in Settings.
 
@@ -101,7 +108,7 @@ scripts/sandbox.sh stop
 ```
 
 `npm run dev` on its own serves a browser preview with demo data and a canned terminal. It's
-handy for styling, and needs no daemon. The screenshots above are from it.
+handy for styling, and needs no daemon. The screenshots and the demo above are from it.
 
 ## Layout
 
