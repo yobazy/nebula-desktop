@@ -1,0 +1,205 @@
+import { useSyncExternalStore } from "react";
+import type { GitState } from "./git";
+import type { UsageReport } from "./usage";
+import type { DesktopPrefs } from "./theme";
+import type {
+  Agent,
+  AgentStatus,
+  LinkState,
+  Project,
+  SessionRef,
+  TerminalTab,
+  Worktree,
+} from "./types";
+
+export interface State {
+  link: LinkState;
+  /** True once the first Snapshot has landed. */
+  loaded: boolean;
+  projects: Record<string, Project>;
+  worktrees: Record<string, Worktree>;
+  agents: Record<string, Agent>;
+  terminals: Record<string, TerminalTab>;
+  selectedProject: string | null;
+  selectedSession: SessionRef | null;
+  /** Bumped on every (re)connect so attached panes re-attach. */
+  epoch: number;
+  /** Bumped on every Snapshot: each connect's full entity list has landed. */
+  snapshots: number;
+  /** Git state per worktree id, from `useGitPolling`. */
+  git: Record<string, GitState>;
+  /** Which main view fills the space right of the sidebar. */
+  view: "sessions" | "usage" | "settings";
+  /** The last usage scan (`usage.ts`), and why the latest one failed. */
+  usage: UsageReport | null;
+  usageError: string | null;
+  /** nebula's shared `theme` setting (the accent), and the desktop app's own prefs. */
+  theme: string;
+  prefs: DesktopPrefs;
+  /** The surfaces in use, with "system" resolved: what the terminal matches. */
+  mode: "dark" | "black" | "light";
+  /** Wall clock, whole minutes: bumped each minute so time-bound views
+   *  (the 5-hour window) expire on their own. */
+  minute: number;
+  /** Where each run terminal is serving, read off its output (runs.ts). */
+  runUrls: Record<string, string>;
+  /** A one-line flash at the bottom of the window, e.g. "x is already a project". */
+  notice: string | null;
+}
+
+const SELECTION_KEY = "nebula-desktop.selection";
+
+function loadSelection(): Pick<State, "selectedProject" | "selectedSession"> {
+  try {
+    const raw = localStorage.getItem(SELECTION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Selection is a convenience; start fresh without it.
+  }
+  return { selectedProject: null, selectedSession: null };
+}
+
+let state: State = {
+  link: { state: "connecting" },
+  loaded: false,
+  projects: {},
+  worktrees: {},
+  agents: {},
+  terminals: {},
+  epoch: 0,
+  snapshots: 0,
+  notice: null,
+  git: {},
+  view: "sessions",
+  runUrls: {},
+  theme: "default",
+  prefs: {},
+  mode: "dark",
+  minute: Math.floor(Date.now() / 60_000),
+  usage: null,
+  usageError: null,
+  ...loadSelection(),
+};
+
+const listeners = new Set<() => void>();
+
+export function getState(): State {
+  return state;
+}
+
+export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
+  const next = typeof patch === "function" ? patch(state) : patch;
+  state = { ...state, ...next };
+  if ("selectedProject" in next || "selectedSession" in next) {
+    try {
+      localStorage.setItem(
+        SELECTION_KEY,
+        JSON.stringify({
+          selectedProject: state.selectedProject,
+          selectedSession: state.selectedSession,
+        }),
+      );
+    } catch {
+      // Ignore: storage may be unavailable.
+    }
+  }
+  listeners.forEach((l) => l());
+}
+
+export function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** The whole state; it is replaced on every change, so derive views with
+ *  useMemo keyed on it rather than selecting fresh arrays per render. */
+export function useAppState(): State {
+  return useSyncExternalStore(subscribe, getState);
+}
+
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function flash(notice: string) {
+  if (noticeTimer) clearTimeout(noticeTimer);
+  setState({ notice });
+  noticeTimer = setTimeout(() => setState({ notice: null }), 3500);
+}
+
+export function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
+  return Object.fromEntries(rows.map((r) => [r.id, r]));
+}
+
+// ---- derived views ----
+
+export function sortedProjects(s: State): Project[] {
+  return Object.values(s.projects).sort(
+    (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+  );
+}
+
+export function projectWorktrees(s: State, projectId: string): Worktree[] {
+  return Object.values(s.worktrees)
+    .filter((w) => w.project_id === projectId)
+    .sort(
+      (a, b) =>
+        Number(b.is_main) - Number(a.is_main) ||
+        a.sort_order - b.sort_order ||
+        a.branch.localeCompare(b.branch),
+    );
+}
+
+export function projectOfWorktree(s: State, worktreeId: string): Project | undefined {
+  const wt = s.worktrees[worktreeId];
+  return wt ? s.projects[wt.project_id] : undefined;
+}
+
+/** How urgently a session wants attention: lower sorts first. */
+export function urgency(a: Agent): number {
+  if (a.status === "needs_feedback") return 0;
+  if (a.status === "running") return 1;
+  if (a.status === "finished" && a.unseen) return 2;
+  return 3;
+}
+
+export function worktreeAgents(s: State, worktreeId: string, archived = false): Agent[] {
+  return Object.values(s.agents)
+    .filter((a) => a.worktree_id === worktreeId && a.archived === archived)
+    .sort(
+      (a, b) =>
+        urgency(a) - urgency(b) ||
+        b.status_changed_at - a.status_changed_at ||
+        a.sort_order - b.sort_order,
+    );
+}
+
+export function worktreeTerminals(s: State, worktreeId: string): TerminalTab[] {
+  return Object.values(s.terminals)
+    .filter((t) => t.worktree_id === worktreeId)
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+export function projectAgents(s: State, projectId: string): Agent[] {
+  const wts = new Set(
+    Object.values(s.worktrees)
+      .filter((w) => w.project_id === projectId)
+      .map((w) => w.id),
+  );
+  return Object.values(s.agents).filter((a) => !a.archived && wts.has(a.worktree_id));
+}
+
+export function waitingAgents(s: State): Agent[] {
+  return Object.values(s.agents)
+    .filter((a) => !a.archived && a.status === "needs_feedback")
+    .sort((a, b) => a.status_changed_at - b.status_changed_at);
+}
+
+export const STATUS_ORDER: AgentStatus[] = [
+  "needs_feedback",
+  "running",
+  "finished",
+  "fresh",
+  "terminated",
+  "disconnected",
+];

@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- nebula-desktop's app icon. Regenerate the platform set with:
+       npx tauri icon src-tauri/icons/app-icon.svg
+       macOS grid: an 824px rounded square centered on the 1024 canvas. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#222d4d"/>
+      <stop offset="1" stop-color="#0b101e"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.42" cy="0.44" r="0.42">
+      <stop offset="0" stop-color="#9db4ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#9db4ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.66" cy="0.62" r="0.36">
+      <stop offset="0" stop-color="#c49bff" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#c49bff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowC" cx="0.34" cy="0.7" r="0.3">
+      <stop offset="0" stop-color="#62c7e6" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#62c7e6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#e6ecff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#9db4ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9db4ff" stop-opacity="0.25"/>
+      <stop offset="0.5" stop-color="#c9d6ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#9db4ff" stop-opacity="0.25"/>
+    </linearGradient>
+    <clipPath id="tile">
+      <rect x="100" y="100" width="824" height="824" rx="186"/>
+    </clipPath>
+    <radialGradient id="haloDone"><stop offset="0.45" stop-color="#5fd4b0" stop-opacity="0.55"/><stop offset="1" stop-color="#5fd4b0" stop-opacity="0"/></radialGradient>
+    <radialGradient id="haloRun"><stop offset="0.45" stop-color="#f2b84b" stop-opacity="0.55"/><stop offset="1" stop-color="#f2b84b" stop-opacity="0"/></radialGradient>
+    <radialGradient id="haloWait"><stop offset="0.45" stop-color="#ff7a6b" stop-opacity="0.55"/><stop offset="1" stop-color="#ff7a6b" stop-opacity="0"/></radialGradient>
+    <!-- Grain: dithers the dark gradients, which band in 8-bit color. -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0"/>
+    </filter>
+  </defs>
+
+  <!-- The tile's shadow, as stacked translucent tiles: a blur filter here
+       leaves seams across the icon in some rasterizers. -->
+  <g fill="#000000">
+    <rect x="92" y="112" width="840" height="840" rx="194" opacity="0.05"/>
+    <rect x="96" y="110" width="832" height="832" rx="190" opacity="0.07"/>
+    <rect x="98" y="106" width="828" height="828" rx="188" opacity="0.1"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+
+  <g clip-path="url(#tile)">
+    <!-- the nebula -->
+    <rect x="100" y="100" width="824" height="824" fill="url(#glowA)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#glowB)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#glowC)"/>
+
+    <rect x="100" y="100" width="824" height="824" filter="url(#grain)" opacity="0.045"/>
+
+    <!-- far stars -->
+    <g fill="#ffffff">
+      <circle cx="238" cy="252" r="5" opacity="0.8"/>
+      <circle cx="770" cy="226" r="4" opacity="0.6"/>
+      <circle cx="812" cy="400" r="3" opacity="0.5"/>
+      <circle cx="214" cy="566" r="3" opacity="0.5"/>
+      <circle cx="702" cy="800" r="4" opacity="0.55"/>
+      <circle cx="318" cy="818" r="3" opacity="0.45"/>
+      <circle cx="600" cy="186" r="3" opacity="0.5"/>
+    </g>
+
+    <!-- the orbit the agents run on, tilted -->
+    <g transform="rotate(-22 512 512)">
+      <ellipse cx="512" cy="512" rx="318" ry="118" fill="none" stroke="url(#ring)" stroke-width="16"/>
+      <!-- agents on the ring, spread round it: done (left), working (front),
+           waiting on you (back right). Points are (512+318cosθ, 512+118sinθ). -->
+      <circle cx="194" cy="512" r="52" fill="url(#haloDone)"/>
+      <circle cx="403" cy="623" r="52" fill="url(#haloRun)"/>
+      <circle cx="671" cy="410" r="52" fill="url(#haloWait)"/>
+      <circle cx="194" cy="512" r="24" fill="#5fd4b0"/>
+      <circle cx="403" cy="623" r="26" fill="#f2b84b"/>
+      <circle cx="671" cy="410" r="22" fill="#ff7a6b"/>
+    </g>
+
+    <!-- the star at the center -->
+    <circle cx="512" cy="512" r="150" fill="url(#core)"/>
+    <path d="M512 382 C522 470 554 502 642 512 C554 522 522 554 512 642 C502 554 470 522 382 512 C470 502 502 470 512 382 Z" fill="#ffffff"/>
+  </g>
+
+  <!-- a hairline to catch the light on the tile's edge -->
+  <rect x="101" y="101" width="822" height="822" rx="185" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+</svg>
