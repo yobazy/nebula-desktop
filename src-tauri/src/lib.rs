@@ -3,6 +3,7 @@ mod git;
 mod icons;
 mod nebula_setup;
 mod settings;
+mod title;
 mod usage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,6 +34,7 @@ pub fn run() {
             nebula_setup::install_nebula,
             icons::read_icon,
             icons::project_logo,
+            title::suggest_title,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

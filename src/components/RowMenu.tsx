@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { isPreview, request } from "../nebula/client";
+import { isPreview, request, tailOutput } from "../nebula/client";
 import { deliverPrompt } from "../nebula/actions";
-import { NoRunCommand, runTerminal, startRun, stopRun } from "../nebula/runs";
+import { ANSI, NoRunCommand, runTerminal, startRun, stopRun } from "../nebula/runs";
 import { flash, getState, setState } from "../nebula/store";
 import type { Agent, AgentKind, TerminalTab, Worktree } from "../nebula/types";
 import { ContextMenu, type MenuItem } from "./Menu";
@@ -44,6 +44,30 @@ async function followUp(agent: Agent, text: string) {
   await deliverPrompt(getState().agents[agent.id] ?? agent, text);
 }
 
+/** Rename (auto): have Claude title the task from its prompts and the end
+ *  of its terminal output, and rename it to that. */
+async function autoRename(agent: Agent) {
+  flash(`Naming ${agent.name}…`);
+  const tail = agent.alive ? await tailOutput({ Agent: agent.id }, 32_768, null) : null;
+  const output = tail
+    ? new TextDecoder()
+        .decode(tail.data)
+        .replace(ANSI, "")
+        .split(/\r?\n|\r/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join("\n")
+        .slice(-4_000)
+    : "";
+  const prompts = agent.recent_prompts.map((p) => p.text);
+  const name = isPreview()
+    ? "Suggested Task Name"
+    : await invoke<string>("suggest_title", { prompts, output });
+  if (name === agent.name) return flash(`${agent.name} already fits`);
+  await request("RenameAgent", { id: agent.id, name });
+  flash(`Renamed to ${name}`);
+}
+
 /** Show a checkout in Finder, or run the project's Open command for it. */
 async function openWorktree(wt: Worktree) {
   const project = getState().projects[wt.project_id];
@@ -82,6 +106,7 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
           onSubmit: (name) => request("RenameAgent", { id: a.id, name }).then(() => {}),
         }),
     };
+    const autoName: MenuItem = { label: "Rename (auto)", run: () => void attempt(autoRename(a)) };
     const duplicate: MenuItem = {
       label: "Duplicate",
       run: () => onDuplicate(a.worktree_id, { task: a.recent_prompts[0]?.text ?? "", kind: a.kind }),
@@ -127,6 +152,7 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
         },
         duplicate,
         rename,
+        autoName,
         { label: "Archive", run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
         del,
       ];
@@ -150,6 +176,7 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
       { label: "Restart", run: () => void attempt(request("RestartAgent", { id: a.id })) },
       duplicate,
       rename,
+      autoName,
       { label: "Archive", run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
     ];
     if (wt) {
