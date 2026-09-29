@@ -1,3 +1,4 @@
+import { getState } from "./store";
 import type { Agent, AgentKind, AgentStatus } from "./types";
 
 export const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -8,6 +9,16 @@ export const STATUS_LABEL: Record<AgentStatus, string> = {
   terminated: "Stopped with an error",
   disconnected: "Disconnected",
 };
+
+/** Whether the agent is held at a usage limit its CLI reported but the
+ *  daemon missed (limits.ts). */
+export function atUsageLimit(a: Agent): boolean {
+  return a.status === "needs_feedback" && !!getState().limits[a.id];
+}
+
+export function statusLabel(a: Agent): string {
+  return atUsageLimit(a) ? "Hit usage limit" : STATUS_LABEL[a.status];
+}
 
 export const KIND_LABEL: Record<AgentKind, string> = {
   claude: "Claude",

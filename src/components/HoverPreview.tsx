@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { projectOfWorktree, useAppState } from "../nebula/store";
-import { agentSpec, relativeTime, STATUS_LABEL } from "../nebula/status";
+import { agentSpec, relativeTime, statusLabel } from "../nebula/status";
 import { findQuestion, lastRows, readScreen } from "../nebula/screen";
 import { useSessionCosts } from "../nebula/budget";
 import { money } from "../nebula/usage";
@@ -103,7 +103,7 @@ function Preview({ id, rect }: { id: string; rect: DOMRect }) {
       <header className="preview-head">
         <span className={`sdot dot-${agent.status}${agent.unseen ? " is-unseen" : ""}`} aria-hidden />
         <span className="preview-name">{agent.name}</span>
-        <span className={`pill pill-${agent.status}`}>{STATUS_LABEL[agent.status]}</span>
+        <span className={`pill pill-${agent.status}`}>{statusLabel(agent)}</span>
       </header>
       <p className="preview-meta">
         {agentSpec(agent)} · {project?.name}

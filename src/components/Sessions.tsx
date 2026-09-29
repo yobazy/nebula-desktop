@@ -8,7 +8,7 @@ import {
   worktreeAgents,
   worktreeTerminals,
 } from "../nebula/store";
-import { agentSpec, lastPrompt, relativeTime, STATUS_LABEL } from "../nebula/status";
+import { agentSpec, lastPrompt, relativeTime, statusLabel } from "../nebula/status";
 import { request } from "../nebula/client";
 import { changedFiles, neverPushed, shipKind, type GitState, type GitStatus } from "../nebula/git";
 import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../nebula/actions";
@@ -429,8 +429,8 @@ function AgentRow({
     >
       <span
         className={`sdot dot-${agent.status}${agent.unseen ? " is-unseen" : ""}`}
-        title={STATUS_LABEL[agent.status]}
-        aria-label={STATUS_LABEL[agent.status]}
+        title={statusLabel(agent)}
+        aria-label={statusLabel(agent)}
       />
       <span className="row-main">
         <span className="row-name">{agent.name}</span>

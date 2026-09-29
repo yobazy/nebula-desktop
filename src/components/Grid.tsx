@@ -5,7 +5,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { onExit, onPty, send, sendInput } from "../nebula/client";
 import { getState, projectOfWorktree, setState, urgency, useAppState, type State } from "../nebula/store";
-import { STATUS_LABEL } from "../nebula/status";
+import { statusLabel } from "../nebula/status";
 import { terminalTheme } from "./TerminalPane";
 import type { Agent } from "../nebula/types";
 import { noteTyped } from "../nebula/queue";
@@ -180,7 +180,7 @@ function Tile({ agent, focused }: { agent: Agent; focused: boolean }) {
           {project?.name}
           {wt && !wt.is_main ? ` · ${wt.branch}` : ""}
         </span>
-        <span className={`pill pill-${agent.status}`}>{STATUS_LABEL[agent.status]}</span>
+        <span className={`pill pill-${agent.status}`}>{statusLabel(agent)}</span>
       </header>
       <div className="gtile-body" data-drop-session={`a:${agent.id}`}>
         <div ref={host} className="gtile-xterm" />

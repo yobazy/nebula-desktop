@@ -10,7 +10,7 @@ import {
   type State,
 } from "../nebula/store";
 import { request } from "../nebula/client";
-import { relativeTime, STATUS_LABEL } from "../nebula/status";
+import { relativeTime, statusLabel } from "../nebula/status";
 import { shipKind } from "../nebula/git";
 import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat } from "../nebula/actions";
 import { openReview } from "../nebula/diff";
@@ -145,7 +145,7 @@ function taskItem(s: State, a: Agent): Item {
     id: `task:${a.id}`,
     group: "Tasks",
     label: a.name,
-    detail: `${STATUS_LABEL[a.status]} ${relativeTime(a.status_changed_at)} · ${where}`,
+    detail: `${statusLabel(a)} ${relativeTime(a.status_changed_at)} · ${where}`,
     run: () => selectAgent(a),
   };
 }

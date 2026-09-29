@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useOverlayKeys } from "./Overlay";
 import { flash, getState, setState, useAppState, worktreeAgents } from "../nebula/store";
 import { changedFiles } from "../nebula/git";
-import { agentSpec, relativeTime, STATUS_LABEL } from "../nebula/status";
+import { agentSpec, relativeTime, statusLabel } from "../nebula/status";
 import { forget, keepAttempt } from "../nebula/fanout";
 import { openReview } from "../nebula/diff";
 import { selectAgent } from "./Sidebar";
@@ -108,7 +108,7 @@ export function CompareView() {
                 {agent ? (
                   <button className="attempt-status" onClick={() => selectAgent(agent)} title="Open this attempt's terminal">
                     <span className={`sdot dot-${agent.status}${agent.unseen ? " is-unseen" : ""}`} aria-hidden />
-                    <span>{STATUS_LABEL[agent.status]}</span>
+                    <span>{statusLabel(agent)}</span>
                     <span className="git-muted">{relativeTime(agent.status_changed_at)}</span>
                   </button>
                 ) : (

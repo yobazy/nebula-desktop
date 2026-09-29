@@ -56,6 +56,10 @@ export interface State {
   minute: number;
   /** Where each run terminal is serving, read off its output (runs.ts). */
   runUrls: Record<string, string>;
+  /** Agents stopped at a usage limit the daemon still counts as running, by
+   *  agent id: the line that said so, and the daemon's status_changed_at it
+   *  was read against (limits.ts). Shown as waiting on you meanwhile. */
+  limits: Record<string, { message: string; since: number }>;
   /** Each project's own logo, by repo path; null when it keeps none (icons.ts). */
   logos: Record<string, string | null>;
   /** A one-line flash at the bottom of the window, e.g. "x is already a project". */
@@ -101,6 +105,7 @@ let state: State = {
   prs: {},
   queue: {},
   runUrls: {},
+  limits: {},
   logos: {},
   theme: "default",
   prefs: {},

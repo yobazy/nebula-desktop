@@ -15,6 +15,7 @@ import { SettingsView } from "./components/Settings";
 import { useUsagePolling } from "./nebula/usage";
 import { useTheme } from "./nebula/theme";
 import { useRunWatch } from "./nebula/runs";
+import { useLimitWatch } from "./nebula/limits";
 import { useProjectSessions } from "./nebula/focus";
 import { useProjectLogos } from "./nebula/icons";
 import { getState, setState, subscribe, useAppState, waitingAgents } from "./nebula/store";
@@ -68,6 +69,7 @@ export default function App() {
   useUsagePolling();
   useTheme();
   useRunWatch();
+  useLimitWatch();
   useProjectSessions();
   useProjectLogos();
   useMinuteClock();

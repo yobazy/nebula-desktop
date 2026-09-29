@@ -41,7 +41,9 @@ export function onAgentStatus(fn: (agent: Agent, from: Agent["status"]) => void)
   return () => statusListeners.delete(fn);
 }
 
-function statusChanged(agent: Agent, from: Agent["status"]) {
+/** Announce a status change the app made itself (limits.ts), as one from
+ *  the daemon is. */
+export function statusChanged(agent: Agent, from: Agent["status"]) {
   onStatusChanged(agent, from);
   statusListeners.forEach((fn) => fn(agent, from));
 }
@@ -217,15 +219,30 @@ function decode(b64: string): Uint8Array {
 
 // ---- event handling ----
 
+/** An agent row from the daemon, kept waiting on you while limits.ts holds
+ *  it at a usage limit: until the daemon has status news of its own. */
+function held(a: Agent): Agent {
+  const hit = getState().limits[a.id];
+  if (!hit) return a;
+  if (a.status === "running" && a.status_changed_at === hit.since) return { ...a, status: "needs_feedback" };
+  setState((s) => {
+    const limits = { ...s.limits };
+    delete limits[a.id];
+    return { limits };
+  });
+  return a;
+}
+
 function handle(event: ServerEvent) {
   if ("Snapshot" in event) {
     const s = event.Snapshot;
+    const agents = s.agents.map(held);
     setState((prev) => ({
       loaded: true,
       snapshots: prev.snapshots + 1,
       projects: byId(s.projects),
       worktrees: byId(s.worktrees),
-      agents: byId(s.agents),
+      agents: byId(agents),
       terminals: byId(s.terminals),
       selectedProject:
         prev.selectedProject && s.projects.some((p) => p.id === prev.selectedProject)
@@ -255,8 +272,9 @@ function handle(event: ServerEvent) {
       setState((s) => ({ worktrees: { ...s.worktrees, [e.Worktree.id]: e.Worktree } }));
     else if ("Agent" in e) {
       const prev = getState().agents[e.Agent.id];
-      setState((s) => ({ agents: { ...s.agents, [e.Agent.id]: e.Agent } }));
-      if (prev && prev.status !== e.Agent.status) statusChanged(e.Agent, prev.status);
+      const next = held(e.Agent);
+      setState((s) => ({ agents: { ...s.agents, [next.id]: next } }));
+      if (prev && prev.status !== next.status) statusChanged(next, prev.status);
     } else if ("Terminal" in e)
       setState((s) => ({ terminals: { ...s.terminals, [e.Terminal.id]: e.Terminal } }));
   } else if ("EntityRemoved" in event) {
@@ -274,9 +292,9 @@ function handle(event: ServerEvent) {
     const { agent: id, status, changed_at, unseen } = event.StatusChanged;
     const prev = getState().agents[id];
     if (!prev) return;
-    const next: Agent = { ...prev, status, status_changed_at: changed_at, unseen };
+    const next = held({ ...prev, status, status_changed_at: changed_at, unseen });
     setState((s) => ({ agents: { ...s.agents, [id]: next } }));
-    if (prev.status !== status) statusChanged(next, prev.status);
+    if (prev.status !== next.status) statusChanged(next, prev.status);
     debugLog(`status: ${next.name} ${prev.status} -> ${status}`);
   } else if ("OutputTail" in event) {
     const { req_id, tail } = event.OutputTail;

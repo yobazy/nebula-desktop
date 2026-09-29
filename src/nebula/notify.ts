@@ -37,7 +37,8 @@ export async function onStatusChanged(agent: Agent, from: AgentStatus) {
   if (agent.archived || isWatching(agent) || isQuietNow()) return;
 
   let title: string | null = null;
-  if (agent.status === "needs_feedback") title = `${agent.name} is waiting on you`;
+  if (agent.status === "needs_feedback")
+    title = getState().limits[agent.id] ? `${agent.name} hit its usage limit` : `${agent.name} is waiting on you`;
   // A finished turn only earns a banner when the app is in the background.
   else if (agent.status === "finished" && from === "running" && !document.hasFocus())
     title = `${agent.name} finished`;
