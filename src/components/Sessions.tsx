@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   flash,
+  getState,
   projectWorktrees,
   setState,
   useAppState,
@@ -12,10 +13,20 @@ import { request } from "../nebula/client";
 import { changedFiles, neverPushed, shipKind, type GitState, type GitStatus } from "../nebula/git";
 import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../nebula/actions";
 import { BandRunButton, BandRunLine, ProjectRun } from "./Run";
+import { PrLine } from "./Pr";
+import { useHoverPreview } from "./HoverPreview";
+import { fanOutOf, openCompare } from "../nebula/fanout";
+import { useSessionCosts } from "../nebula/budget";
+import { money } from "../nebula/usage";
+import { EditorButton } from "./Editor";
+import { openReview } from "../nebula/diff";
 import { useRowMenu, type Seed } from "./RowMenu";
 import { PanelGlyph } from "./Sidebar";
 import { ProjectIcon, useProjectColorStyle } from "./ProjectIcon";
 import { sameSession, type Agent, type TerminalTab, type Worktree } from "../nebula/types";
+import { isFollowUp, isPinned, moveTask, toggleFlag } from "../nebula/organize";
+import { FlagGlyph, PinGlyph, useTaskColorStyle } from "./Organize";
+import { reorderKey, useReorder } from "./useReorder";
 
 /** Re-render once a minute so relative times stay honest. */
 function useMinuteTick() {
@@ -32,6 +43,7 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
   const state = useAppState();
   useMinuteTick();
   const rowMenu = useRowMenu(onNewTask);
+  const preview = useHoverPreview();
   const colorStyle = useProjectColorStyle(state.selectedProject ? state.projects[state.selectedProject] : undefined);
   const project = state.selectedProject ? state.projects[state.selectedProject] : undefined;
   const worktrees = useMemo(
@@ -74,12 +86,13 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
         </div>
       </header>
 
-      <div className="bands">
+      <div className="bands" onMouseOver={preview.onMouseOver} onMouseLeave={preview.onMouseLeave}>
         {worktrees.map((wt) => (
           <Band key={wt.id} worktree={wt} onNewTask={onNewTask} onMenu={rowMenu.openFor} />
         ))}
       </div>
       {rowMenu.element}
+      {preview.element}
     </section>
   );
 }
@@ -97,9 +110,27 @@ function Band({
 }) {
   const state = useAppState();
   const [showArchived, setShowArchived] = useState(false);
-  const agents = worktreeAgents(state, worktree.id);
+  const reorder = useReorder((id, to, seen) => {
+    const a = getState().agents[id];
+    if (a) void moveTask(a, to, seen);
+  });
+  // Mid-drag, rows keep the order the drag began with.
+  const sorted = worktreeAgents(state, worktree.id);
+  const agents = reorder.frozen
+    ? [...sorted].sort((a, b) => rank(reorder.frozen!, a.id) - rank(reorder.frozen!, b.id))
+    : sorted;
   const archived = worktreeAgents(state, worktree.id, true);
   const terminals = worktreeTerminals(state, worktree.id);
+  // Picking an archived task elsewhere (the follow-up list) shows it here;
+  // archiving the open one leaves the list as it was.
+  const selectedId = state.selectedSession && "Agent" in state.selectedSession ? state.selectedSession.Agent : null;
+  const selectedArchived = archived.some((a) => a.id === selectedId);
+  useEffect(() => {
+    if (selectedArchived) setShowArchived(true);
+    // Only on a pick (each makes a new selection, even of the same task),
+    // not when the open task becomes archived.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedSession]);
   const git = state.git[worktree.id];
 
   return (
@@ -111,10 +142,13 @@ function Band({
             <span className="band-branch-name" dir="auto">{worktree.branch}</span>
           </span>
           {worktree.is_main && <span className="band-note">main checkout</span>}
+          <CompareLink worktreeId={worktree.id} />
+          <BandCost worktreeId={worktree.id} />
         </span>
         <span className="band-actions">
           {git && !("error" in git) && <ShipButton worktree={worktree} git={git} />}
           {!worktree.is_main && <BandRunButton worktree={worktree} />}
+          <EditorButton worktree={worktree} />
           <button
             className="icon-btn"
             title="New shell in this checkout"
@@ -138,12 +172,17 @@ function Band({
         </span>
       </header>
       {git && <GitLine git={git} worktree={worktree} />}
+      {git && !("error" in git) && <PrLine worktree={worktree} git={git} />}
       <BandRunLine worktree={worktree} />
 
-      <ul className="rows">
-        {agents.map((a) => (
-          <li key={a.id}>
-            <AgentRow agent={a} onMenu={onMenu} />
+      <ul className="rows" ref={reorder.list}>
+        {agents.map((a, i) => (
+          <li key={a.id} {...reorder.item(a.id)}>
+            <AgentRow
+              agent={a}
+              onMenu={onMenu}
+              onKeyDown={(e) => reorderKey(e, i, agents.length, (to) => void moveTask(a, to))}
+            />
           </li>
         ))}
         {terminals.map((t) => (
@@ -177,6 +216,41 @@ function Band({
         </>
       )}
     </section>
+  );
+}
+
+/** Where `id` stands in `ids`; those missing go last. */
+function rank(ids: string[], id: string): number {
+  const i = ids.indexOf(id);
+  return i < 0 ? ids.length : i;
+}
+
+/** What this branch's tasks have cost (30 days), from Claude Code's logs. */
+function BandCost({ worktreeId }: { worktreeId: string }) {
+  const state = useAppState();
+  const costs = useSessionCosts();
+  let total = 0;
+  for (const a of Object.values(state.agents)) {
+    if (a.worktree_id === worktreeId && a.session_id) total += costs.get(a.session_id) ?? 0;
+  }
+  if (total < 0.01) return null;
+  return (
+    <span className="band-cost" title="What this branch's Claude tasks have cost in the last 30 days, at API rates">
+      {money(total)}
+    </span>
+  );
+}
+
+/** A fanned-out attempt links to the comparison of its group. */
+function CompareLink({ worktreeId }: { worktreeId: string }) {
+  const state = useAppState();
+  const group = fanOutOf(state, worktreeId);
+  if (!group) return null;
+  const n = group.worktrees.filter((id) => state.worktrees[id]).length;
+  return (
+    <button className="band-compare" onClick={() => openCompare(group.id)} title={`One of ${n} attempts at: ${group.prompt}`}>
+      1 of {n} · Compare
+    </button>
   );
 }
 
@@ -241,6 +315,17 @@ function GitLine({ git, worktree }: { git: GitState; worktree: Worktree }) {
     );
   if (parts.length === 0)
     parts.push(<span className="git-muted">{git.upstream ? "Clean, pushed" : "Clean"}</span>);
+  const reviewable = files > 0 || (!worktree.is_main && (git.baseAhead ?? 0) > 0);
+  if (reviewable)
+    parts.push(
+      <button
+        className="link-btn git-review"
+        onClick={() => openReview(worktree.id)}
+        title={files > 0 ? "Review the uncommitted changes" : "Review what this branch changed"}
+      >
+        Review
+      </button>,
+    );
 
   return (
     <p className="git-line">
@@ -260,7 +345,7 @@ function GitLine({ git, worktree }: { git: GitState; worktree: Worktree }) {
 }
 
 /** One click to get a branch shipped, by an agent on it. */
-function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
+export function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
   const state = useAppState();
   const [sending, setSending] = useState(false);
   const kind = shipKind(git, worktree);
@@ -310,15 +395,37 @@ function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
   );
 }
 
-function AgentRow({ agent, onMenu }: { agent: Agent; onMenu: OpenMenu }) {
-  const selected = sameSession(useAppState().selectedSession, { Agent: agent.id });
+function AgentRow({
+  agent,
+  onMenu,
+  onKeyDown,
+}: {
+  agent: Agent;
+  onMenu: OpenMenu;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+}) {
+  const state = useAppState();
+  const selected = sameSession(state.selectedSession, { Agent: agent.id });
   const prompt = lastPrompt(agent);
+  const pinned = !agent.archived && isPinned(state, agent);
+  const flagged = isFollowUp(state, agent.id);
+  const colorStyle = useTaskColorStyle(agent);
   return (
     <button
-      className={`row row-${agent.status}${selected ? " is-selected" : ""}${agent.unseen ? " is-unseen" : ""}`}
+      className={`row row-${agent.status}${selected ? " is-selected" : ""}${agent.unseen ? " is-unseen" : ""}${colorStyle ? " has-color" : ""}`}
+      data-agent={agent.id}
+      style={colorStyle}
       onClick={() => setState({ selectedSession: { Agent: agent.id } })}
       onContextMenu={(e) => onMenu(e, { Agent: agent })}
+      onKeyDown={(e) => {
+        // F flags the task to come back to, or clears the flag.
+        if (e.key === "f" && e.target === e.currentTarget && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          e.preventDefault();
+          void toggleFlag(agent);
+        } else onKeyDown?.(e);
+      }}
       aria-current={selected ? "true" : undefined}
+      aria-keyshortcuts={agent.archived ? "F" : "F Alt+ArrowUp Alt+ArrowDown"}
     >
       <span
         className={`sdot dot-${agent.status}${agent.unseen ? " is-unseen" : ""}`}
@@ -329,7 +436,19 @@ function AgentRow({ agent, onMenu }: { agent: Agent; onMenu: OpenMenu }) {
         <span className="row-name">{agent.name}</span>
         <span className="row-prompt">{prompt ?? agentSpec(agent)}</span>
       </span>
-      <span className="row-age">{relativeTime(agent.status_changed_at)}</span>
+      <span className="row-age">
+        {flagged && (
+          <span className="row-mark mark-flag" role="img" title="Flagged for follow-up (F)" aria-label="Flagged for follow-up">
+            <FlagGlyph />
+          </span>
+        )}
+        {pinned && (
+          <span className="row-mark" role="img" title="Pinned: stays where you put it. Unpin from its menu." aria-label="Pinned">
+            <PinGlyph />
+          </span>
+        )}
+        {relativeTime(agent.status_changed_at)}
+      </span>
     </button>
   );
 }

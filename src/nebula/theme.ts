@@ -35,10 +35,37 @@ export interface DesktopPrefs {
   mode?: Mode;
   /** The sidebar cat (`Pet.tsx`); on unless turned off. */
   pet?: boolean;
+  /** Closing the window keeps the app in the menu bar (desktop.ts); on
+   *  unless turned off. */
+  keepInMenuBar?: boolean;
+  /** The system-wide quick-capture hotkey, in the global-shortcut plugin's
+   *  syntax, or "off". Unset is QUICK_CAPTURE_DEFAULT. */
+  quickCapture?: string;
+  /** Chimes for finished turns and questions (delight.ts); on unless off. */
+  sounds?: boolean;
+  /** 0 to 1; 0.5 when unset. */
+  soundVolume?: number;
+  /** Quiet hours, "HH:MM" local: no chimes or banners between them. */
+  quietFrom?: string;
+  quietTo?: string;
+  /** Spend you'd like to stay under, in API-equivalent dollars (budget.ts). */
+  dailyBudget?: number;
+  weeklyBudget?: number;
+  /** The editor a band's Open in editor uses: an app name from list_editors. */
+  editor?: string;
   /** Icons picked for projects, by repo path (`icons.ts`). */
   projectIcons?: Record<string, ProjectIconChoice>;
   /** Colors picked for projects, by repo path: a PROJECT_COLORS name. */
   projectColors?: Record<string, string>;
+  /** Projects in the order dragged into, by repo path (`organize.ts`);
+   *  any not listed follow in the daemon's order. */
+  projectOrder?: string[];
+  /** Tasks pinned to the top of their branch, in order, by worktree id. */
+  pinnedTasks?: Record<string, string[]>;
+  /** Colors picked for tasks, by agent id: a PROJECT_COLORS name. */
+  taskColors?: Record<string, string>;
+  /** Tasks marked to come back to, by agent id: when they were marked (ms). */
+  followUps?: Record<string, number>;
 }
 
 export type ProjectIconChoice = { kind: "emoji"; value: string } | { kind: "image"; value: string };

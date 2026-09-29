@@ -13,7 +13,7 @@ export const TICK_MS = 140;
  *  loops in place for long. Reset per bat. */
 const CHASE_PATIENCE = 60;
 
-export type Mode = "walk" | "sit" | "sleep" | "chase" | "alert";
+export type Mode = "walk" | "sit" | "sleep" | "chase" | "alert" | "party";
 
 export interface Cat {
   x: number;
@@ -23,7 +23,7 @@ export interface Cat {
   left: number;
   frame: Frame;
   step: number;
-  bubble: "heart" | "!" | "z" | null;
+  bubble: "heart" | "!" | "z" | "note" | "star" | "sweat" | null;
   bubbleLeft: number;
   ball: { x: number; v: number; bats: number } | null;
 }
@@ -94,6 +94,13 @@ export function step(c: Cat, width: number): Cat {
         // In reach but still rolling: wait for it.
         n.frame = "stand";
       }
+      return n;
+    }
+    case "party": {
+      // Hops in place: a pounce, then back on its feet.
+      n.frame = n.step % 4 < 2 ? "pounce" : "stand";
+      if (n.step % 4 === 0) n.dir = n.dir === 1 ? -1 : 1;
+      if (n.left <= 0) return { ...pickNext(n, width), bubble: null };
       return n;
     }
     case "sit":

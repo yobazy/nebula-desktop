@@ -2,6 +2,9 @@ import { useSyncExternalStore } from "react";
 import type { GitState } from "./git";
 import type { UsageReport } from "./usage";
 import type { DesktopPrefs } from "./theme";
+import type { PrState } from "./prs";
+import type { Queued } from "./queue";
+import type { FanOut } from "./fanout";
 import type {
   Agent,
   AgentStatus,
@@ -29,7 +32,17 @@ export interface State {
   /** Git state per worktree id, from `useGitPolling`. */
   git: Record<string, GitState>;
   /** Which main view fills the space right of the sidebar. */
-  view: "sessions" | "usage" | "settings";
+  view: "sessions" | "usage" | "settings" | "review" | "compare";
+  /** The checkout the review view shows (Review.tsx). */
+  review: string | null;
+  /** Tasks fanned out over several worktrees, by group id (fanout.ts), and
+   *  the group the compare view shows. */
+  fanouts: Record<string, FanOut>;
+  compare: string | null;
+  /** The pull request on each worktree's branch, by worktree id (prs.ts). */
+  prs: Record<string, PrState>;
+  /** Prompts waiting for an agent's turn to end, by agent id (queue.ts). */
+  queue: Record<string, Queued[]>;
   /** The last usage scan (`usage.ts`), and why the latest one failed. */
   usage: UsageReport | null;
   usageError: string | null;
@@ -47,6 +60,15 @@ export interface State {
   logos: Record<string, string | null>;
   /** A one-line flash at the bottom of the window, e.g. "x is already a project". */
   notice: string | null;
+}
+
+function loadFanOuts(): Record<string, FanOut> {
+  try {
+    const raw = JSON.parse(localStorage.getItem("nebula-desktop.fanouts") ?? "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
 }
 
 const SELECTION_KEY = "nebula-desktop.selection";
@@ -73,6 +95,11 @@ let state: State = {
   notice: null,
   git: {},
   view: "sessions",
+  review: null,
+  fanouts: loadFanOuts(),
+  compare: null,
+  prs: {},
+  queue: {},
   runUrls: {},
   logos: {},
   theme: "default",
@@ -136,10 +163,22 @@ export function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
 
 // ---- derived views ----
 
+/** Projects in the order dragged into (prefs.projectOrder), the rest after
+ *  them in the daemon's order. */
 export function sortedProjects(s: State): Project[] {
-  return Object.values(s.projects).sort(
+  const daemon = Object.values(s.projects).sort(
     (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
   );
+  return pinnedFirst(daemon, s.prefs.projectOrder, (p) => p.repo_path);
+}
+
+/** `items` with those named in `order` first, in that order; the rest keep
+ *  their places after them. */
+export function pinnedFirst<T>(items: T[], order: string[] | undefined, key: (t: T) => string): T[] {
+  if (!order?.length) return items;
+  const rank = new Map(order.map((k, i) => [k, i]));
+  const pinned = items.filter((t) => rank.has(key(t))).sort((a, b) => rank.get(key(a))! - rank.get(key(b))!);
+  return [...pinned, ...items.filter((t) => !rank.has(key(t)))];
 }
 
 export function projectWorktrees(s: State, projectId: string): Worktree[] {
@@ -166,8 +205,10 @@ export function urgency(a: Agent): number {
   return 3;
 }
 
+/** A branch's tasks: those pinned (dragged into place) first, in their
+ *  order, then the rest by urgency. */
 export function worktreeAgents(s: State, worktreeId: string, archived = false): Agent[] {
-  return Object.values(s.agents)
+  const auto = Object.values(s.agents)
     .filter((a) => a.worktree_id === worktreeId && a.archived === archived)
     .sort(
       (a, b) =>
@@ -175,6 +216,7 @@ export function worktreeAgents(s: State, worktreeId: string, archived = false): 
         b.status_changed_at - a.status_changed_at ||
         a.sort_order - b.sort_order,
     );
+  return archived ? auto : pinnedFirst(auto, s.prefs.pinnedTasks?.[worktreeId], (a) => a.id);
 }
 
 export function worktreeTerminals(s: State, worktreeId: string): TerminalTab[] {

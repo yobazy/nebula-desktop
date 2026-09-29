@@ -1,20 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isPreview, request, tailOutput } from "../nebula/client";
-import { deliverPrompt } from "../nebula/actions";
+import { enqueue, isIdle } from "../nebula/queue";
+import { needsForce } from "../nebula/actions";
 import { ANSI, NoRunCommand, runTerminal, startRun, stopRun } from "../nebula/runs";
 import { flash, getState, setState } from "../nebula/store";
 import type { Agent, AgentKind, TerminalTab, Worktree } from "../nebula/types";
 import { ContextMenu, type MenuItem } from "./Menu";
 import { openLink, RunSetupDialog } from "./Run";
+import { openReview } from "../nebula/diff";
+import { ConfirmDialog, TextDialog, type ConfirmDialogSpec, type TextDialogSpec } from "./Dialogs";
+import { isFollowUp, isPinned, moveTask, toggleFlag, unpinAll, unpinTask } from "../nebula/organize";
+import { TaskColorDialog } from "./Organize";
 
 export type Seed = { task: string; kind: AgentKind };
 
 type Dialog =
-  | { kind: "text"; title: string; label: string; initial: string; multiline?: boolean; submit: string; onSubmit: (v: string) => Promise<void> }
-  /** onConfirm resolving `false` keeps the dialog: it has put up another. */
-  | { kind: "confirm"; title: string; message: string; confirm: string; onConfirm: () => Promise<boolean | void> }
-  | { kind: "run-setup"; worktree: Worktree };
+  | TextDialogSpec
+  | ConfirmDialogSpec
+  | { kind: "run-setup"; worktree: Worktree }
+  | { kind: "task-color"; agent: Agent };
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -25,23 +30,6 @@ async function attempt(what: Promise<unknown>) {
   } catch (e) {
     flash(errText(e));
   }
-}
-
-/** Send a follow-up to an agent. One that's asleep (reaped when idle) is
- *  woken by opening it, and gets the prompt once its CLI has had a moment
- *  to come up. */
-async function followUp(agent: Agent, text: string) {
-  setState({ selectedSession: { Agent: agent.id } });
-  if (!agent.alive) {
-    flash(`Starting ${agent.name}…`);
-    const deadline = Date.now() + 20_000;
-    while (!getState().agents[agent.id]?.alive) {
-      if (Date.now() > deadline) throw new Error(`${agent.name} didn't start; try again once it's up`);
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    await new Promise((r) => setTimeout(r, 2_500));
-  }
-  await deliverPrompt(getState().agents[agent.id] ?? agent, text);
 }
 
 /** Rename (auto): have Claude title the task from its prompts and the end
@@ -124,12 +112,31 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
           onConfirm: () => request("DeleteAgent", { id: a.id }).then(() => {}),
         }),
     };
+    // Arranging it: the desktop app's own marks, kept in its prefs.
+    const followUp: MenuItem = {
+      label: isFollowUp(s, a.id) ? "Clear flag" : "Flag for follow-up",
+      keys: "F",
+      separated: true,
+      run: () => void attempt(toggleFlag(a)),
+    };
+    const pins = (s.prefs.pinnedTasks?.[a.worktree_id] ?? []).filter((id) => s.agents[id] && !s.agents[id].archived);
+    const arrange: MenuItem[] = [
+      followUp,
+      isPinned(s, a)
+        ? { label: "Unpin", run: () => void attempt(unpinTask(a)) }
+        : { label: "Pin to top", run: () => void attempt(moveTask(a, 0)) },
+      ...(pins.length > 1 || (pins.length === 1 && pins[0] !== a.id)
+        ? [{ label: `Unpin all on ${wt?.branch ?? "this branch"}`, run: () => void attempt(unpinAll(a.worktree_id)) }]
+        : []),
+      { label: "Color…", run: () => setDialog({ kind: "task-color", agent: a }) },
+    ];
     const issue: MenuItem[] = a.issue_url ? [{ label: "Open issue", run: () => void openLink(a.issue_url!) }] : [];
 
     if (a.archived) {
       return [
         { label: "Unarchive", run: () => void attempt(request("UnarchiveAgent", { id: a.id })) },
         duplicate,
+        followUp,
         ...issue,
         del,
       ];
@@ -153,7 +160,8 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
         duplicate,
         rename,
         autoName,
-        { label: "Archive", run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
+        ...arrange,
+        { label: "Archive", separated: true, run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
         del,
       ];
     }
@@ -170,15 +178,20 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
             initial: "",
             multiline: true,
             submit: "Send",
-            onSubmit: (text) => followUp(a, text),
+            note: isIdle(a) ? undefined : `${a.name} is mid-turn: this waits in its queue and is sent when the turn ends.`,
+            onSubmit: async (text) => {
+              if ((await enqueue(a, text)) === "queued") flash(`Queued for ${a.name}`);
+            },
           }),
       },
       { label: "Restart", run: () => void attempt(request("RestartAgent", { id: a.id })) },
       duplicate,
       rename,
       autoName,
-      { label: "Archive", run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
+      ...arrange,
+      { label: "Archive", separated: true, run: () => void attempt(request("ArchiveAgent", { id: a.id })) },
     ];
+    if (wt) items.splice(2, 0, { label: "Review changes", run: () => openReview(wt.id) });
     if (wt) {
       const running = runTerminal(s, wt.id)?.alive;
       items.push(
@@ -222,7 +235,7 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
           await request("DeleteWorktree", { id: wt.id, force });
         } catch (e) {
           // Uncommitted or unpushed work: ask again before forcing it.
-          if (!force) {
+          if (!force && needsForce(e)) {
             confirmDeleteWorktree(wt, true);
             return false;
           }
@@ -275,6 +288,7 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
       {menu && <ContextMenu {...menu} onClose={close} />}
       {dialog?.kind === "text" && <TextDialog d={dialog} onClose={() => setDialog(null)} />}
       {dialog?.kind === "confirm" && <ConfirmDialog d={dialog} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "task-color" && <TaskColorDialog agent={dialog.agent} onClose={() => setDialog(null)} />}
       {dialog?.kind === "run-setup" && (
         <RunSetupDialog
           worktree={dialog.worktree}
@@ -285,139 +299,4 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
     </>
   );
   return { openFor, element };
-}
-
-function useEscape(onClose: () => void, busy: boolean) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, busy]);
-}
-
-function TextDialog({ d, onClose }: { d: Extract<Dialog, { kind: "text" }>; onClose: () => void }) {
-  const [text, setText] = useState(d.initial);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  useEscape(onClose, busy);
-  useEffect(() => {
-    field.current?.focus();
-    field.current?.select();
-  }, []);
-
-  const submit = async () => {
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    try {
-      await d.onSubmit(text.trim());
-      onClose();
-    } catch (e) {
-      setError(errText(e));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <form
-        className="dialog dialog-narrow"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="row-dialog-title"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <h2 id="row-dialog-title">{d.title}</h2>
-        {d.multiline ? (
-          <textarea
-            ref={field}
-            className="task-box"
-            rows={4}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.metaKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-            aria-label={d.label}
-          />
-        ) : (
-          <input ref={field} className="setting-input run-input" value={text} onChange={(e) => setText(e.target.value)} aria-label={d.label} spellCheck={false} />
-        )}
-        {error && (
-          <p className="dialog-error" role="alert">
-            {error}
-          </p>
-        )}
-        <footer className="dialog-foot">
-          <span className="hint">
-            {d.multiline && (
-              <>
-                <kbd>⌘</kbd>
-                <kbd>↵</kbd> to send
-              </>
-            )}
-          </span>
-          <button type="button" className="btn" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || !text.trim()}>
-            {d.submit}
-          </button>
-        </footer>
-      </form>
-    </div>
-  );
-}
-
-function ConfirmDialog({ d, onClose }: { d: Extract<Dialog, { kind: "confirm" }>; onClose: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
-  useEscape(onClose, busy);
-  // Focus lands on Cancel: Enter on a destructive dialog shouldn't delete.
-  useEffect(() => cancel.current?.focus(), []);
-
-  return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="dialog dialog-narrow" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
-        <h2 id="confirm-title">{d.title}</h2>
-        <p id="confirm-body" className="dialog-body">
-          {d.message}
-        </p>
-        {error && (
-          <p className="dialog-error" role="alert">
-            {error}
-          </p>
-        )}
-        <footer className="dialog-foot">
-          <span className="hint" />
-          <button ref={cancel} type="button" className="btn" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                if ((await d.onConfirm()) !== false) onClose();
-              } catch (e) {
-                setError(errText(e));
-                setBusy(false);
-              }
-            }}
-          >
-            {d.confirm}
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
 }

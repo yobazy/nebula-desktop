@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { getState, subscribe, waitingAgents } from "../nebula/store";
+import { onPetMood } from "../nebula/delight";
 import { CAT_W, H, SCALE, step, TICK_MS, W, type Cat, type Frame } from "./petBrain";
 
 // A pixel cat that lives along the bottom of the sidebar, VS Code Pets
@@ -134,6 +135,15 @@ function Sprite({ frame }: { frame: Frame }) {
   );
 }
 
+const BUBBLE_TEXT: Record<NonNullable<Cat["bubble"]>, string> = {
+  heart: "♥",
+  "!": "!",
+  z: "z",
+  note: "♪",
+  star: "✦",
+  sweat: "💧",
+};
+
 /** `on` comes from the sidebar, so the store's churn doesn't re-render the
  *  cat: it redraws on its own ticks. */
 export const Pet = memo(function Pet({ on }: { on: boolean }) {
@@ -184,6 +194,25 @@ export const Pet = memo(function Pet({ on }: { on: boolean }) {
     });
   }, []);
 
+  // What happens in the app shows on the cat: a finished turn or a push
+  // gets a note, a merge a party, red CI a nervous sweat.
+  useEffect(
+    () =>
+      onPetMood((mood) =>
+        setCat((c) =>
+          // An agent waiting on you outranks good news: keep the "!".
+          c.mode === "alert" && mood !== "party"
+            ? c
+            : mood === "party"
+            ? { ...c, mode: "party", left: 28, ball: null, bubble: "star", bubbleLeft: 28 }
+            : mood === "happy"
+              ? { ...c, mode: c.mode === "sleep" ? "sit" : c.mode, left: c.mode === "sleep" ? 30 : c.left, bubble: "note", bubbleLeft: 14 }
+              : { ...c, mode: "sit", left: 40, ball: null, bubble: "sweat", bubbleLeft: 24 },
+        ),
+      ),
+    [],
+  );
+
   if (!on) return null;
   const facingLeft = cat.dir === -1;
   return (
@@ -218,7 +247,7 @@ export const Pet = memo(function Pet({ on }: { on: boolean }) {
         {/* Bubbles clear on the tick, which reduced motion doesn't run. */}
         {cat.bubble && !reduced && (
           <span className={`pet-bubble pet-bubble-${cat.bubble === "!" ? "alert" : cat.bubble}`} aria-hidden>
-            {cat.bubble === "heart" ? "♥" : cat.bubble === "!" ? "!" : "z"}
+            {BUBBLE_TEXT[cat.bubble]}
           </span>
         )}
       </button>

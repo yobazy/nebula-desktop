@@ -11,6 +11,8 @@ import type { Worktree } from "./types";
 export interface GitStatus {
   /** Null on a detached HEAD. */
   branch: string | null;
+  /** The commit checked out; null before the first commit. */
+  head: string | null;
   upstream: string | null;
   /** Configured, but deleted on the remote (typically a merged PR's branch). */
   upstreamGone: boolean;

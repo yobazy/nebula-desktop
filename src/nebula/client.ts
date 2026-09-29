@@ -64,8 +64,20 @@ export function send(variant: string, body?: Record<string, unknown>): Promise<v
     return Promise.resolve();
   }
   const request = body === undefined ? variant : { [variant]: body };
+  // Attach, Detach and Resize must reach the daemon in the order they were
+  // made — a Detach from one pane overtaking the next pane's Attach of the
+  // same session would leave it blank — and separate invokes don't promise
+  // that. So they queue behind one another; everything else goes at once.
+  if (ORDERED.has(variant)) {
+    const next = ordered.then(() => invoke<void>("send", { request }));
+    ordered = next.catch(() => {});
+    return next;
+  }
   return invoke("send", { request });
 }
+
+const ORDERED = new Set(["Attach", "Detach", "Resize"]);
+let ordered: Promise<void> = Promise.resolve();
 
 /** An RPC-style request: resolves with the Ack's created id, rejects with the
  *  daemon's Error message. */

@@ -4,7 +4,6 @@ import {
   colorOf,
   iconFor,
   pickIconImage,
-  PROJECT_COLORS,
   setProjectColor,
   setProjectIcon,
   type ShownIcon,
@@ -12,6 +11,8 @@ import {
 import { flash, useAppState } from "../nebula/store";
 import type { Project } from "../nebula/types";
 import { ContextMenu, type MenuItem } from "./Menu";
+import { ColorRow } from "./Organize";
+import { resetProjectOrder } from "../nebula/organize";
 
 export function ProjectIcon({ project, size = 18 }: { project: Project; size?: number }) {
   const { prefs, logos } = useAppState();
@@ -73,28 +74,11 @@ export function IconPicker({ project, onClose }: { project: Project; onClose: ()
         <div className="picker-section" id="color-label">
           Color
         </div>
-        <div className="color-row" role="radiogroup" aria-labelledby="color-label">
-          <button
-            role="radio"
-            aria-checked={!color}
-            className={`color-swatch color-none${!color ? " is-on" : ""}`}
-            onClick={() => void setProjectColor(project.repo_path, null)}
-            title="No color"
-            aria-label="No color"
-          />
-          {PROJECT_COLORS.map((c) => (
-            <button
-              key={c.name}
-              role="radio"
-              aria-checked={color === c.name}
-              className={`color-swatch${color === c.name ? " is-on" : ""}`}
-              style={{ "--pc": c.hue } as React.CSSProperties}
-              onClick={() => void setProjectColor(project.repo_path, c.name).catch((e) => flash(String(e)))}
-              title={c.name}
-              aria-label={c.name}
-            />
-          ))}
-        </div>
+        <ColorRow
+          value={color}
+          labelledBy="color-label"
+          onPick={(name) => void setProjectColor(project.repo_path, name).catch((e) => flash(String(e)))}
+        />
 
         <div className="picker-section">Icon</div>
         <div className="emoji-grid" role="group" aria-label="Emoji">
@@ -184,6 +168,12 @@ export function useProjectMenu() {
       items.push({
         label: "Reset icon & color",
         run: () => void setProjectIcon(project.repo_path, null).then(() => setProjectColor(project.repo_path, null)),
+      });
+    }
+    if (prefs.projectOrder?.length) {
+      items.push({
+        label: "Reset project order",
+        run: () => void resetProjectOrder().catch((err) => flash(String(err))),
       });
     }
     items.push({

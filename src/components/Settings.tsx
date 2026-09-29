@@ -19,6 +19,9 @@ import {
 } from "../nebula/settings";
 import { ACCENTS, MODES, resolvedMode, savePrefs, themeName } from "../nebula/theme";
 import { sortedProjects } from "../nebula/store";
+import { QUICK_CAPTURE_CHOICES, QUICK_CAPTURE_DEFAULT } from "../nebula/desktop";
+import { play } from "../nebula/delight";
+import { chosenEditor, useEditors } from "./Editor";
 
 const TABS = ["Appearance", "General", "Sessions", "Agents", "Project", "Shortcuts", "Experimental"] as const;
 type Tab = (typeof TABS)[number];
@@ -156,6 +159,41 @@ function Appearance({ settings, save }: { settings: Settings; save: (k: string, 
           </div>
           <Switch id="set-pet" on={prefs.pet !== false} onChange={(on) => void savePrefs({ ...prefs, pet: on })} />
         </div>
+        <div className="setting">
+          <div className="setting-text">
+            <label className="setting-label" htmlFor="set-menubar">
+              Keep running in the menu bar
+            </label>
+            <span className="setting-hint">
+              Closing the window hides it. The menu bar icon counts tasks waiting on you; ⌘Q quits.
+            </span>
+          </div>
+          <Switch
+            id="set-menubar"
+            on={prefs.keepInMenuBar !== false}
+            onChange={(on) => void savePrefs({ ...prefs, keepInMenuBar: on })}
+          />
+        </div>
+        <div className="setting">
+          <div className="setting-text">
+            <label className="setting-label" htmlFor="set-capture">
+              Quick capture hotkey
+            </label>
+            <span className="setting-hint">Starts a new task from any app: pick the project, type, done.</span>
+          </div>
+          <select
+            id="set-capture"
+            className="setting-input"
+            value={prefs.quickCapture ?? QUICK_CAPTURE_DEFAULT}
+            onChange={(e) => void savePrefs({ ...prefs, quickCapture: e.target.value })}
+          >
+            {QUICK_CAPTURE_CHOICES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="setting setting-stack">
           <div className="setting-text">
             <span className="setting-label" id="accent-label">
@@ -179,10 +217,100 @@ function Appearance({ settings, save }: { settings: Settings; save: (k: string, 
           </div>
         </div>
       </Group>
+      <SoundsAndEditor />
       <Group title="Terminal app" note="only changes how the TUI looks">
         <Rows rows={TUI_APPEARANCE} settings={settings} save={save} />
       </Group>
     </>
+  );
+}
+
+/** The desktop app's sounds, quiet hours and editor. */
+function SoundsAndEditor() {
+  const { prefs } = useAppState();
+  const editors = useEditors();
+  const editor = chosenEditor(editors);
+  return (
+    <Group title="Sounds and focus">
+      <div className="setting">
+        <div className="setting-text">
+          <label className="setting-label" htmlFor="set-sounds">
+            Sounds
+          </label>
+          <span className="setting-hint">
+            A soft chime when a turn ends or a task starts waiting on you, unless you're looking at it. The TUI plays its
+            own.
+          </span>
+        </div>
+        <div className="setting-inline">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={prefs.soundVolume ?? 0.5}
+            disabled={prefs.sounds === false}
+            onChange={(e) => void savePrefs({ ...prefs, soundVolume: Number(e.target.value) })}
+            onMouseUp={() => play("done", true)}
+            onKeyUp={() => play("done", true)}
+            aria-label="Volume"
+            className="volume"
+          />
+          <Switch id="set-sounds" on={prefs.sounds !== false} onChange={(on) => void savePrefs({ ...prefs, sounds: on })} />
+        </div>
+      </div>
+      <div className="setting">
+        <div className="setting-text">
+          <span className="setting-label" id="quiet-label">
+            Quiet hours
+          </span>
+          <span className="setting-hint">
+            No chimes or banners between these times. The badge and the menu bar still count what's waiting.
+          </span>
+        </div>
+        <div className="setting-inline" role="group" aria-labelledby="quiet-label">
+          <input
+            type="time"
+            className="setting-input time-input"
+            value={prefs.quietFrom ?? ""}
+            onChange={(e) => void savePrefs({ ...prefs, quietFrom: e.target.value || undefined })}
+            aria-label="From"
+          />
+          <span className="git-muted">to</span>
+          <input
+            type="time"
+            className="setting-input time-input"
+            value={prefs.quietTo ?? ""}
+            onChange={(e) => void savePrefs({ ...prefs, quietTo: e.target.value || undefined })}
+            aria-label="To"
+          />
+        </div>
+      </div>
+      <div className="setting">
+        <div className="setting-text">
+          <label className="setting-label" htmlFor="set-editor">
+            Code editor
+          </label>
+          <span className="setting-hint">
+            What a branch's {"</>"} button opens its checkout in.{" "}
+            {editors.length === 0 && "No editor this app knows was found in Applications."}
+          </span>
+        </div>
+        <select
+          id="set-editor"
+          className="setting-input"
+          value={editor ?? ""}
+          disabled={!editors.length}
+          onChange={(e) => void savePrefs({ ...prefs, editor: e.target.value })}
+        >
+          {editors.map((e) => (
+            <option key={e} value={e}>
+              {e}
+            </option>
+          ))}
+        </select>
+      </div>
+    </Group>
   );
 }
 
@@ -351,6 +479,7 @@ function ProjectTab({ settings, onChange }: { settings: Settings; onChange: () =
 }
 
 const SHORTCUTS: [string, string][] = [
+  ["⌘K", "Command palette: jump to anything, run any action"],
   ["⌘N", "New task in the selected project"],
   ["⌘O", "Add a project"],
   ["⌘P", "Filter projects"],
@@ -360,6 +489,7 @@ const SHORTCUTS: [string, string][] = [
   ["⌘,", "Settings"],
   ["⌘B", "Hide or show the projects sidebar"],
   ["⌥⌘B", "Hide or show the tasks column"],
+  ["⌘G", "Watch up to four tasks in a grid"],
   ["⇧↵", "Newline in a Claude Code prompt"],
 ];
 

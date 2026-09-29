@@ -5,6 +5,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getState, projectOfWorktree, waitingAgents } from "./store";
+import { isQuietNow } from "./quiet";
 import type { Agent, AgentStatus } from "./types";
 
 let permitted: boolean | null = null;
@@ -33,7 +34,7 @@ function where(agent: Agent): string {
 
 export async function onStatusChanged(agent: Agent, from: AgentStatus) {
   updateBadge();
-  if (agent.archived || isWatching(agent)) return;
+  if (agent.archived || isWatching(agent) || isQuietNow()) return;
 
   let title: string | null = null;
   if (agent.status === "needs_feedback") title = `${agent.name} is waiting on you`;
@@ -44,6 +45,12 @@ export async function onStatusChanged(agent: Agent, from: AgentStatus) {
   if (!title || !(await canNotify())) return;
 
   sendNotification({ title, body: where(agent) });
+}
+
+/** A banner of the app's own (a budget crossed), hushed in quiet hours. */
+export async function notify(title: string, body: string) {
+  if (isQuietNow() || !(await canNotify())) return;
+  sendNotification({ title, body });
 }
 
 export function updateBadge() {

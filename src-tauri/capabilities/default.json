@@ -11,6 +11,13 @@
     "notification:default",
     "dialog:allow-open",
     "core:window:allow-start-dragging",
-    "core:window:allow-set-badge-count"
+    "core:window:allow-set-badge-count",
+    "core:window:allow-hide",
+    "core:window:allow-destroy",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered"
   ]
 }

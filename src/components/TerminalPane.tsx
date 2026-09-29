@@ -5,9 +5,12 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { debugLog, onExit, onPty, request, send, sendInput } from "../nebula/client";
-import { getState, projectOfWorktree, setState, useAppState } from "../nebula/store";
+import { flash, getState, projectOfWorktree, setState, useAppState } from "../nebula/store";
 import { agentSpec, STATUS_LABEL } from "../nebula/status";
-import { sessionKey, type SessionRef } from "../nebula/types";
+import { sessionKey, type Agent, type SessionRef } from "../nebula/types";
+import { enqueue, isIdle, noteTyped, unqueue } from "../nebula/queue";
+import { noteSize } from "../nebula/screen";
+import { TextDialog, type TextDialogSpec } from "./Dialogs";
 
 const THEME = {
   background: "#0f1524",
@@ -58,7 +61,7 @@ const LIGHT_THEME = {
   brightWhite: "#1b2233",
 };
 
-const terminalTheme = (mode: string) =>
+export const terminalTheme = (mode: string) =>
   mode === "light" ? LIGHT_THEME : mode === "black" ? { ...THEME, background: "#000000", cursorAccent: "#000000" } : THEME;
 
 export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
@@ -74,6 +77,7 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
   const current = useRef<SessionRef | null>(null);
   const [ready, setReady] = useState(false);
   const [exited, setExited] = useState<number | null | undefined>(undefined);
+  const [dialog, setDialog] = useState<TextDialogSpec | null>(null);
 
   // Follow the app's light/dark/black surfaces.
   useEffect(() => {
@@ -107,7 +111,10 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
       return true;
     });
     t.onData((data) => {
-      if (current.current) void sendInput(current.current, data);
+      const ref = current.current;
+      if (!ref) return;
+      if ("Agent" in ref) noteTyped(ref.Agent);
+      void sendInput(ref, data);
     });
 
     document.fonts.load('13px "JetBrains Mono"').finally(() => {
@@ -138,6 +145,7 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
       const t2 = term.current;
       if (current.current && (t2.cols !== cols || t2.rows !== rows)) {
         void send("Resize", { session: current.current, cols: t2.cols, rows: t2.rows });
+        if ("Agent" in current.current) noteSize(current.current.Agent, t2.cols, t2.rows);
       }
     });
     if (host.current) observer.observe(host.current);
@@ -181,6 +189,7 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
     const offExit = onExit(ref, (code) => setExited(code));
 
     void send("Attach", { session: ref, from_seq: null, cols: t.cols, rows: t.rows });
+    if ("Agent" in ref) noteSize(ref.Agent, t.cols, t.rows);
     if ("Agent" in ref) void send("MarkAgentSeen", { id: ref.Agent });
     t.focus();
 
@@ -230,6 +239,13 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
           <div className="pane-actions">
             {agent && !agent.archived && (
               <>
+                <button
+                  className="btn"
+                  onClick={() => setDialog(queueDialog(agent))}
+                  title={isIdle(agent) ? "Send a follow-up prompt" : "Queue a prompt to send when this turn ends"}
+                >
+                  {isIdle(agent) ? "Follow up" : "Queue next"}
+                </button>
                 <button className="btn" onClick={() => request("RestartAgent", { id: agent.id })}>
                   Restart
                 </button>
@@ -266,7 +282,8 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
         <header className="pane-head" data-tauri-drag-region />
       )}
 
-      <div className="pane-body">
+      {agent && <QueueStrip agent={agent} queued={state.queue[agent.id]} />}
+      <div className="pane-body" data-drop-session={key ?? undefined}>
         <div ref={host} className={`xterm-host${exists ? "" : " is-hidden"}`} />
         {!exists && (
           <div className="pane-empty">
@@ -296,7 +313,45 @@ export function TerminalPane({ onNewTask }: { onNewTask: () => void }) {
           </div>
         )}
       </div>
+      {dialog && <TextDialog d={dialog} onClose={() => setDialog(null)} />}
     </section>
+  );
+}
+
+function queueDialog(agent: Agent): TextDialogSpec {
+  const idle = isIdle(agent);
+  return {
+    kind: "text",
+    title: idle ? `Follow up with ${agent.name}` : `Queue a prompt for ${agent.name}`,
+    label: "Prompt",
+    initial: "",
+    multiline: true,
+    submit: idle ? "Send" : "Queue",
+    note: idle ? undefined : "Sent by this app as soon as the current turn ends, while the app is open.",
+    onSubmit: async (text) => {
+      if ((await enqueue(agent, text)) === "queued") flash(`Queued for ${agent.name}`);
+    },
+  };
+}
+
+/** Prompts lined up for this agent's next turns, each removable. */
+function QueueStrip({ agent, queued }: { agent: Agent; queued: { id: string; text: string }[] | undefined }) {
+  if (!queued?.length) return null;
+  return (
+    <div className="queue-strip" aria-label={`Queued for ${agent.name}`}>
+      <span className="queue-label">Up next</span>
+      <ol>
+        {queued.map((q, i) => (
+          <li key={q.id} title={q.text}>
+            <span className="queue-n">{i + 1}</span>
+            <span className="queue-text">{q.text}</span>
+            <button className="icon-btn" onClick={() => unqueue(agent.id, q.id)} aria-label="Remove from the queue" title="Remove">
+              ×
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

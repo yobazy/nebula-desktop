@@ -71,9 +71,28 @@ export async function deliverPrompt(agent: Agent, prompt: string) {
   await sendInput(session, "\r");
 }
 
+/** Send a follow-up to an agent. One that's asleep (reaped when idle) is
+ *  woken by opening it, and gets the prompt once its CLI has had a moment
+ *  to come up. `select: false` sends it without switching the terminal to
+ *  it, for a queued prompt — unless it has to be woken, which takes an
+ *  attach. */
+export async function followUp(agent: Agent, text: string, opts: { select?: boolean } = {}) {
+  if (opts.select !== false || !agent.alive) setState({ selectedSession: { Agent: agent.id } });
+  if (!agent.alive) {
+    flash(`Starting ${agent.name}…`);
+    const deadline = Date.now() + 20_000;
+    while (!getState().agents[agent.id]?.alive) {
+      if (Date.now() > deadline) throw new Error(`${agent.name} didn't start; try again once it's up`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    await new Promise((r) => setTimeout(r, 2_500));
+  }
+  await deliverPrompt(getState().agents[agent.id] ?? agent, text);
+}
+
 /** A fresh agent this young is most likely still booting with a starting
  *  prompt in hand: its CLI isn't reading yet, so it can't take another. */
-const BOOTING_MS = 20_000;
+export const BOOTING_MS = 20_000;
 
 /** Who should take a job on a worktree: an agent that's done and idle there
  *  (the selected one first, else the latest), a new one when there's none,
@@ -121,6 +140,13 @@ export async function runOnWorktree(worktreeId: string, prompt: string, what: st
   const settings = await readSettings();
   await createAgent({ worktree: worktreeId, kind: defaultKind(settings), settings, prompt });
   flash(`Started an agent to ${what}`);
+}
+
+/** Whether a DeleteWorktree failed only because the checkout has changes
+ *  git won't drop without --force: the one refusal worth offering to force. */
+export function needsForce(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /modified or untracked files|use --force/i.test(msg);
 }
 
 export const SHIP_LABEL: Record<ShipKind, string> = {

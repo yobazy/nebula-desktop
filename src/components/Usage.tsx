@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useOverlayKeys } from "./Overlay";
+import { budgetLevel, budgets } from "../nebula/budget";
+import { savePrefs } from "../nebula/theme";
 import { setState, useAppState } from "../nebula/store";
 import { relativeTime } from "../nebula/status";
 import {
@@ -79,6 +81,7 @@ export function UsageView() {
       ) : (
         <div className="usage-body">
           <Tiles summary={summary} days={days} />
+          <Budgets />
 
           <div className="usage-grid">
             <section className="usage-card" aria-labelledby="by-project">
@@ -123,6 +126,71 @@ export function UsageView() {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Budgets you'd like to stay under, and how close you are: set right
+ *  where you look at spend. Saved with the desktop prefs. */
+function Budgets() {
+  const state = useAppState();
+  const list = useMemo(
+    () => budgets(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.usage, state.prefs, state.minute],
+  );
+  const { prefs } = state;
+  const field = (kind: "dailyBudget" | "weeklyBudget", label: string) => (
+    <label className="budget-field">
+      <span>{label}</span>
+      <span className="budget-input">
+        $
+        <input
+          // Re-read when the pref changes elsewhere (or loads late).
+          key={prefs[kind] ?? "none"}
+          type="number"
+          min={0}
+          step={5}
+          inputMode="decimal"
+          defaultValue={prefs[kind] ?? ""}
+          placeholder="none"
+          aria-label={`${label} budget in dollars`}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            const next = e.target.value.trim() && v > 0 ? v : undefined;
+            if (next !== prefs[kind]) void savePrefs({ ...prefs, [kind]: next });
+          }}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+      </span>
+    </label>
+  );
+  return (
+    <section className="usage-card budgets" aria-labelledby="budgets-title">
+      <header className="usage-card-head">
+        <h2 id="budgets-title">Budgets</h2>
+        <span className="usage-note">a nudge at 80% and at 100%</span>
+      </header>
+      <div className="budget-row">
+        {field("dailyBudget", "Daily")}
+        {field("weeklyBudget", "Last 7 days")}
+        <div className="budget-bars">
+          {list.length === 0 ? (
+            <p className="usage-note">Set one to see how close you are.</p>
+          ) : (
+            list.map((b) => (
+              <div key={b.kind} className={`budget-bar${b.share >= 1 ? " is-over" : b.share >= 0.8 ? " is-near" : ""}`}>
+                <span className="budget-bar-label">
+                  {b.kind === "daily" ? "Today" : "Last 7 days"}: {money(b.spent)} of {money(b.budget)}
+                </span>
+                <span className="pbar-track" aria-hidden>
+                  <span className="pbar-fill" style={{ width: `${Math.min(100, b.share * 100)}%` }} />
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -305,16 +373,29 @@ export function UsageChip() {
     [state.usage, state.minute],
   );
   const on = state.view === "usage";
+  const budget = useMemo(
+    () => budgets(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.usage, state.prefs, state.minute],
+  );
+  const level = budgetLevel(budget);
+  const worst = budget.reduce<(typeof budget)[number] | null>((w, b) => (!w || b.share > w.share ? b : w), null);
   return (
     <button
-      className={`usage-chip${on ? " is-on" : ""}`}
+      className={`usage-chip${on ? " is-on" : ""}${level ? ` is-${level}` : ""}`}
       onClick={() => setState({ view: on ? "sessions" : "usage" })}
       aria-pressed={on}
       title="Claude usage (⌘U)"
     >
       <span className="usage-chip-label">Usage</span>
       <span className="usage-chip-value">
-        {block ? `${money(block.cost)} this window` : state.usage ? "No active window" : "…"}
+        {level && worst
+          ? `${Math.round(worst.share * 100)}% of ${worst.kind} budget`
+          : block
+            ? `${money(block.cost)} this window`
+            : state.usage
+              ? "No active window"
+              : "…"}
       </span>
       <kbd>⌘U</kbd>
     </button>

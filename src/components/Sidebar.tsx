@@ -12,7 +12,11 @@ import { relativeTime } from "../nebula/status";
 import type { Agent, Project } from "../nebula/types";
 import { UsageChip } from "./Usage";
 import { Pet } from "./Pet";
+import { QuickAnswer } from "./QuickAnswer";
 import { ProjectIcon, useProjectColorStyle, useProjectMenu } from "./ProjectIcon";
+import { FlagGlyph, FollowUps } from "./Organize";
+import { moveProject } from "../nebula/organize";
+import { reorderKey, useReorder } from "./useReorder";
 
 export function selectAgent(agent: Agent) {
   setState((s) => ({
@@ -24,8 +28,18 @@ export function selectAgent(agent: Agent) {
 export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; onHide: () => void }) {
   const state = useAppState();
   const [query, setQuery] = useState("");
+  // Waiting rows opened to answer from here, by agent id.
+  const [answering, setAnswering] = useState<Set<string>>(() => new Set());
+  const toggleAnswer = (id: string) =>
+    setAnswering((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const search = useRef<HTMLInputElement>(null);
   const projectMenu = useProjectMenu();
+  // Dragging reorders the whole list, so not while it's filtered.
+  const reorder = useReorder((repo, to) => void moveProject(repo, to), !query);
 
   const projects = useMemo(() => sortedProjects(state), [state]);
   const waiting = useMemo(() => waitingAgents(state), [state]);
@@ -86,24 +100,46 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
             Waiting on you <span className="waiting-count">{waiting.length}</span>
           </h2>
           <ul>
-            {waiting.map((a) => (
-              <li key={a.id}>
-                <button className="waiting-row" onClick={() => selectAgent(a)}>
-                  <span className="sdot dot-needs_feedback" aria-hidden />
-                  <span className="waiting-name">{a.name}</span>
-                  <span className="waiting-where">
-                    <span>
-                      <ProjectDot project={projectOfWorktree(state, a.worktree_id)} />
-                      {projectOfWorktree(state, a.worktree_id)?.name}
+            {waiting.map((a) => {
+              const open = answering.has(a.id);
+              return (
+                <li key={a.id} className={open ? "is-answering" : undefined}>
+                  <button className="waiting-row" onClick={() => selectAgent(a)}>
+                    <span className="sdot dot-needs_feedback" aria-hidden />
+                    <span className="waiting-name">
+                      {a.name}
+                      {state.prefs.followUps?.[a.id] !== undefined && (
+                        <span className="waiting-flag" role="img" aria-label="Flagged for follow-up" title="Flagged for follow-up">
+                          <FlagGlyph />
+                        </span>
+                      )}
                     </span>
-                    <span className="waiting-age">{relativeTime(a.status_changed_at)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
+                    <span className="waiting-where">
+                      <span>
+                        <ProjectDot project={projectOfWorktree(state, a.worktree_id)} />
+                        {projectOfWorktree(state, a.worktree_id)?.name}
+                      </span>
+                      <span className="waiting-age">{relativeTime(a.status_changed_at)}</span>
+                    </span>
+                  </button>
+                  <button
+                    className={`waiting-answer${open ? " is-on" : ""}`}
+                    onClick={() => toggleAnswer(a.id)}
+                    aria-expanded={open}
+                    aria-label={`${open ? "Hide" : "Answer"} ${a.name} here`}
+                    title={open ? "Hide" : "Answer without opening it"}
+                  >
+                    {open ? "Hide" : "Answer"}
+                  </button>
+                  {open && <QuickAnswer agent={a} onOpen={() => selectAgent(a)} />}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
+
+      <FollowUps />
 
       <div className="project-search">
         <input
@@ -127,9 +163,9 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
         <kbd>⌘P</kbd>
       </div>
 
-      <ul className="project-list">
+      <ul className="project-list" ref={reorder.list}>
         {shown.map((p, i) => (
-          <li key={p.id}>
+          <li key={p.id} {...reorder.item(p.repo_path)}>
             <ProjectRow
               project={p}
               index={query ? null : i}
@@ -139,6 +175,7 @@ export function Sidebar({ onAddProject, onHide }: { onAddProject: () => void; on
               )}
               selected={p.id === state.selectedProject}
               onMenu={projectMenu.openFor}
+              onKeyDown={(e) => !query && reorderKey(e, i, shown.length, (to) => void moveProject(p.repo_path, to))}
             />
           </li>
         ))}
@@ -183,6 +220,7 @@ function ProjectRow({
   selected,
   live,
   onMenu,
+  onKeyDown,
 }: {
   project: Project;
   index: number | null;
@@ -190,6 +228,7 @@ function ProjectRow({
   selected: boolean;
   live: boolean;
   onMenu: (e: React.MouseEvent, project: Project) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const needs = agents.filter((a) => a.status === "needs_feedback").length;
   const unseen = agents.filter((a) => a.status === "finished" && a.unseen).length;
@@ -212,6 +251,8 @@ function ProjectRow({
       style={colorStyle}
       onClick={() => setState({ selectedProject: project.id })}
       onContextMenu={(e) => onMenu(e, project)}
+      onKeyDown={onKeyDown}
+      aria-keyshortcuts={index !== null ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
       aria-current={selected ? "page" : undefined}
       title={project.repo_path}
     >
@@ -292,7 +333,7 @@ export function PanelGlyph() {
 }
 
 /** A small dot in the project's color, when it has one. */
-function ProjectDot({ project }: { project: Project | undefined }) {
+export function ProjectDot({ project }: { project: Project | undefined }) {
   const style = useProjectColorStyle(project);
   return style ? <span className="project-dot" style={style} aria-hidden /> : null;
 }

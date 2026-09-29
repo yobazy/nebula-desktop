@@ -30,6 +30,7 @@ const worktrees: Worktree[] = [
   { id: "w0", project_id: "p0", path: `${HOME}/storefront`, branch: "main", is_main: true, sort_order: 0 },
   { id: "w1", project_id: "p0", path: `${HOME}/storefront-worktrees/cart-sync`, branch: "cart-sync", is_main: false, sort_order: 1 },
   { id: "w2", project_id: "p0", path: `${HOME}/storefront-worktrees/stripe-webhooks`, branch: "stripe-webhooks", is_main: false, sort_order: 2 },
+  { id: "w3", project_id: "p0", path: `${HOME}/storefront-worktrees/search-facets`, branch: "search-facets", is_main: false, sort_order: 3 },
   ...projects.slice(1).map((p, i) => ({
     id: `wm${i}`,
     project_id: p.id,
@@ -83,6 +84,7 @@ const agents: Agent[] = [
   agent("a8", "wm1", "Orders Command Menu", "finished", 60 * 3, ["add a cmd+k menu for orders"], { unseen: true }),
   agent("a9", "wm2", "Share Sheet", "fresh", 0, []),
   agent("a10", "wm3", "Weekly Invoice Job", "terminated", 45, ["generate the weekly invoice batch"]),
+  agent("a12", "w3", "Search Facets", "finished", 60 * 5, ["add size and color facets to search"]),
   agent("a11", "w0", "Old Spike", "finished", 60 * 24 * 6, ["spike on an image CDN"], { archived: true }),
 ];
 
@@ -238,6 +240,38 @@ export function startMock(handlers: Map<string, PtyHandler>) {
       });
       return null;
     }
+    if (variant === "CreateWorktree" && body) {
+      const id = `wf${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+      const project = getState().projects[String(body.project)];
+      const wt: Worktree = {
+        id,
+        project_id: String(body.project),
+        path: `${project?.repo_path ?? HOME}-worktrees/${body.branch}`,
+        branch: String(body.branch),
+        is_main: false,
+        sort_order: 100,
+      };
+      worktrees.push(wt);
+      setState((s) => ({ worktrees: { ...s.worktrees, [id]: wt } }));
+      return { Worktree: id };
+    }
+    if (variant === "CreateAgent" && body) {
+      const id = `af${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+      const prompt = body.starting_prompt ? [String(body.starting_prompt)] : [];
+      const a = agent(id, String(body.worktree), String(body.name), "running", 0, prompt, { kind: body.kind as Agent["kind"] });
+      setState((s) => ({ agents: { ...s.agents, [id]: { ...a, status_changed_at: Date.now() } } }));
+      return { Agent: id };
+    }
+    if (variant === "DeleteWorktree" && body) {
+      const id = String(body.id);
+      setState((s) => {
+        const worktrees = { ...s.worktrees };
+        delete worktrees[id];
+        const agents = Object.fromEntries(Object.entries(s.agents).filter(([, a]) => a.worktree_id !== id));
+        return { worktrees, agents };
+      });
+      return null;
+    }
     if (variant === "StopRun" && body) {
       setState((s) => {
         const terminals = { ...s.terminals };
@@ -245,6 +279,10 @@ export function startMock(handlers: Map<string, PtyHandler>) {
         return { terminals };
       });
       return null;
+    }
+    if (variant === "TailOutput" && body && "Agent" in (body.session as SessionRef)) {
+      const text = screenFor(body.session as SessionRef);
+      return { end_seq: text.length, data: new TextEncoder().encode(text) } as unknown as EntityId;
     }
     if (variant === "TailOutput" && body) {
       // A dev server that prints its address a moment after starting.
@@ -275,6 +313,7 @@ export function startMock(handlers: Map<string, PtyHandler>) {
 
 const clean = {
   branch: "main",
+  head: "a1b2c3d",
   upstream: "origin/main",
   upstreamGone: false,
   ahead: 0,
@@ -302,6 +341,8 @@ export function mockGitStatus(worktreeId: string): GitStatus {
       return { ...base, upstream: null, baseAhead: 3 };
     case "wm0":
       return { ...base, behind: 5 };
+    case "w3":
+      return { ...base, upstream: "origin/search-facets", upstreamGone: true, baseAhead: 2 };
     case "wm2":
       return { ...base, upstreamGone: true };
     case "wm1":
@@ -353,4 +394,116 @@ export function mockUsage(): UsageReport {
     });
   }
   return { root: "~/.claude/projects", files: 42, buckets: buckets.sort((a, b) => a.hour - b.hour) };
+}
+
+/** A small change set per demo worktree, as git.rs would report it. */
+export function mockDiff(worktreeId: string, scope: "uncommitted" | "branch") {
+  const sync = [
+    "diff --git a/src/cart/sync.ts b/src/cart/sync.ts",
+    "index 3b18e51..a9d2c10 100644",
+    "--- a/src/cart/sync.ts",
+    "+++ b/src/cart/sync.ts",
+    "@@ -12,14 +12,19 @@ export class CartSync {",
+    "   private pending: CartUpdate[] = [];",
+    "   private running = false;",
+    " ",
+    "-  async flush() {",
+    "-    await Promise.all(this.pending.map((u) => this.apply(u)));",
+    "-    this.pending = [];",
+    "+  /** Apply queued updates one at a time, in the order they arrived. */",
+    "+  async flush() {",
+    "+    if (this.running) return;",
+    "+    this.running = true;",
+    "+    try {",
+    "+      while (this.pending.length) {",
+    "+        const update = this.pending.shift()!;",
+    "+        await this.apply(update);",
+    "+      }",
+    "+    } finally {",
+    "+      this.running = false;",
+    "+    }",
+    "   }",
+    " ",
+    "   private async apply(update: CartUpdate) {",
+    "     const res = await fetch(`/api/cart/${update.id}`, {",
+    "diff --git a/src/cart/sync.test.ts b/src/cart/sync.test.ts",
+    "new file mode 100644",
+    "index 0000000..5e1c309",
+    "--- /dev/null",
+    "+++ b/src/cart/sync.test.ts",
+    "@@ -0,0 +1,9 @@",
+    "+import { CartSync } from './sync';",
+    "+",
+    "+test('applies updates in order', async () => {",
+    "+  const seen: number[] = [];",
+    "+  const sync = new CartSync((u) => seen.push(u.id));",
+    "+  sync.push({ id: 1 }, { id: 2 }, { id: 3 });",
+    "+  await sync.flush();",
+    "+  expect(seen).toEqual([1, 2, 3]);",
+    "+});",
+    "diff --git a/src/cart/legacy.ts b/src/cart/legacy.ts",
+    "deleted file mode 100644",
+    "index 77aa0f1..0000000",
+    "--- a/src/cart/legacy.ts",
+    "+++ /dev/null",
+    "@@ -1,3 +0,0 @@",
+    "-// Kept for the old checkout flow.",
+    "-export const LEGACY_SYNC = true;",
+    "-export default LEGACY_SYNC;",
+    "",
+  ].join("\n");
+  const committed = [
+    "diff --git a/src/cart/retry.ts b/src/cart/retry.ts",
+    "index 1d2e3f4..5a6b7c8 100644",
+    "--- a/src/cart/retry.ts",
+    "+++ b/src/cart/retry.ts",
+    "@@ -1,5 +1,8 @@",
+    " export async function retry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {",
+    "-  return fn();",
+    "+  for (let i = 0; ; i++) {",
+    "+    try { return await fn(); }",
+    "+    catch (e) { if (i + 1 >= tries) throw e; await sleep(2 ** i * 250); }",
+    "+  }",
+    " }",
+    "",
+  ].join("\n");
+  const dirty = worktreeId === "w1" || worktreeId === "wm1";
+  return {
+    patch: (dirty ? sync : "") + (scope === "branch" && worktreeId !== "wm1" ? committed : ""),
+    untracked: dirty ? [{ path: "notes/cart-sync.md", text: "# Cart sync\n\nOne update at a time.\n", size: 36 }] : [],
+    truncated: false,
+    against: scope === "branch" ? "3f9a2c1" : "HEAD",
+  };
+}
+
+/** A spread of pull request states for the demo branches. */
+export function mockPr(worktreeId: string) {
+  const base = { url: "https://github.com/acme/storefront/pull/", isDraft: false, mergeable: "MERGEABLE", reviewDecision: "" };
+  switch (worktreeId) {
+    case "w1":
+      return {
+        kind: "found" as const,
+        pr: {
+          ...base,
+          number: 128,
+          url: base.url + 128,
+          title: "Apply cart updates sequentially",
+          state: "OPEN",
+          reviewDecision: "CHANGES_REQUESTED",
+          statusCheckRollup: [
+            { name: "build", status: "COMPLETED", conclusion: "SUCCESS" },
+            { name: "e2e", status: "COMPLETED", conclusion: "FAILURE" },
+          ],
+        },
+      };
+    case "w2":
+      return { kind: "none" as const };
+    case "w3":
+      return {
+        kind: "found" as const,
+        pr: { ...base, number: 121, url: base.url + 121, title: "Search facets", state: "MERGED", headRefOid: "a1b2c3d", reviewDecision: "APPROVED", statusCheckRollup: [] },
+      };
+    default:
+      return { kind: "none" as const };
+  }
 }

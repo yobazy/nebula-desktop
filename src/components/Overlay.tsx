@@ -11,7 +11,7 @@ export function useOverlayKeys(focusTarget: RefObject<HTMLElement | null>) {
     (first ?? focusTarget.current)?.focus();
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
-      const editing = t instanceof HTMLInputElement || t instanceof HTMLSelectElement;
+      const editing = t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement;
       if (e.key === "Escape" && !editing) setState({ view: "sessions" });
     };
     window.addEventListener("keydown", onKey);

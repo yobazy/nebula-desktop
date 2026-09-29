@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar, selectAgent } from "./components/Sidebar";
 import { Sessions } from "./components/Sessions";
 import { TerminalPane } from "./components/TerminalPane";
@@ -18,13 +18,37 @@ import { useRunWatch } from "./nebula/runs";
 import { useProjectSessions } from "./nebula/focus";
 import { useProjectLogos } from "./nebula/icons";
 import { getState, setState, subscribe, useAppState, waitingAgents } from "./nebula/store";
+import { usePrPolling } from "./nebula/prs";
+import { useQueueRunner } from "./nebula/queue";
+import { ReviewView } from "./components/Review";
+import { CompareView } from "./components/Compare";
+import { GridView } from "./components/Grid";
+import { useDesktopShell } from "./nebula/desktop";
+import { useDelight } from "./nebula/delight";
+import { useBudgetWatch } from "./nebula/budget";
+import { useFileDrop } from "./nebula/dropfiles";
+import { useFanOutPrune } from "./nebula/fanout";
+import { Palette, type PaletteContext } from "./components/Palette";
+import { TextDialog, type TextDialogSpec } from "./components/Dialogs";
 
 export default function App() {
-  const [launch, setLaunch] = useState<{ worktree: string | null; seed?: Seed } | null>(null);
+  const [launch, setLaunch] = useState<{ worktree: string | null; seed?: Seed; pickProject?: boolean } | null>(null);
   const openLaunch = useCallback(
     (worktree?: string, seed?: Seed) => setLaunch({ worktree: worktree ?? null, seed }),
     [],
   );
+  // Quick capture (the global hotkey, the menu bar): from anywhere, so the
+  // project is picked in the dialog.
+  const openCapture = useCallback(() => {
+    setState({ view: "sessions" });
+    setLaunch({ worktree: null, pickProject: true });
+  }, []);
+  const openAgent = useCallback((id: string) => {
+    const a = getState().agents[id];
+    if (a) selectAgent(a);
+  }, []);
+  useDesktopShell(openCapture, openAgent);
+  const [grid, setGrid] = useGridMode();
 
   const [addStep, setAddStep] = useState<AddStep | null>(null);
   const openAddProject = useCallback(() => {
@@ -35,6 +59,12 @@ export default function App() {
     void start();
   }, []);
   useGitPolling();
+  usePrPolling();
+  useDelight();
+  useBudgetWatch();
+  useFileDrop();
+  useFanOutPrune();
+  useQueueRunner();
   useUsagePolling();
   useTheme();
   useRunWatch();
@@ -54,17 +84,37 @@ export default function App() {
   );
   // Buttons to bring hidden columns back, at the terminal's top left — after
   // the window's traffic lights when nothing else is left of it.
+  const [palette, setPalette] = useState(false);
+  const [textDialog, setTextDialog] = useState<TextDialogSpec | null>(null);
+  const paletteCtx = useMemo<PaletteContext>(
+    () => ({
+      newTask: () => openLaunch(),
+      addProject: openAddProject,
+      toggleProjects: () => setHideProjects((h) => !h),
+      toggleTasks: () => setHideTasks((h) => !h),
+      toggleGrid: () => setGrid((g) => !g),
+      prompt: setTextDialog,
+    }),
+    [openLaunch, openAddProject, setHideProjects, setHideTasks, setGrid],
+  );
+
   const reveal = [
     hideProjects && { label: "Show projects (⌘B)", run: () => setHideProjects(false) },
     hideTasks && { label: "Show tasks (⌥⌘B)", run: () => setHideTasks(false) },
   ].filter(Boolean) as { label: string; run: () => void }[];
   const revealLeft = hideProjects && hideTasks ? 80 : 10;
 
-  // ⌘N starts a task; ⌘O adds a project; ⌘U shows usage; ⌘, settings; ⌘J cycles through the sessions waiting on you.
+  // ⌘K opens the palette; ⌘N starts a task; ⌘O adds a project; ⌘U shows usage; ⌘, settings; ⌘J cycles through the sessions waiting on you.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return;
-      if (e.key === "n") {
+      if (e.key === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      } else if (e.key === "g") {
+        e.preventDefault();
+        setGrid((g) => !g);
+      } else if (e.key === "n") {
         e.preventDefault();
         if (getState().selectedProject) openLaunch();
       } else if (e.code === "KeyB") {
@@ -92,7 +142,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [openLaunch, openAddProject, setHideProjects, setHideTasks]);
+  }, [openLaunch, openAddProject, setHideProjects, setHideTasks, setGrid]);
 
   return (
     <div
@@ -133,16 +183,46 @@ export default function App() {
             ))}
           </div>
         )}
-        <TerminalPane onNewTask={() => openLaunch()} />
+        {grid ? <GridView onExit={() => setGrid(false)} /> : <TerminalPane onNewTask={() => openLaunch()} />}
       </div>
       {view === "usage" && <UsageView />}
       {view === "settings" && <SettingsView />}
-      {launch && <LaunchDialog initialWorktree={launch.worktree} seed={launch.seed} onClose={() => setLaunch(null)} />}
+      {view === "review" && <ReviewView key={getState().review ?? ""} />}
+      {view === "compare" && <CompareView />}
+      {launch && (
+        <LaunchDialog
+          initialWorktree={launch.worktree}
+          seed={launch.seed}
+          pickProject={launch.pickProject}
+          onClose={() => setLaunch(null)}
+        />
+      )}
       {addStep && <AddProjectDialog step={addStep} onDone={setAddStep} />}
+      {palette && <Palette ctx={paletteCtx} onClose={() => setPalette(false)} />}
+      {textDialog && <TextDialog d={textDialog} onClose={() => setTextDialog(null)} />}
       <Notice />
       <DaemonGate />
     </div>
   );
+}
+
+/** Whether the terminal column shows the grid (⌘G), remembered across launches. */
+function useGridMode(): [boolean, (v: boolean | ((v: boolean) => boolean)) => void] {
+  const [grid, setGrid] = useState(() => {
+    try {
+      return localStorage.getItem("nebula-desktop.grid") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("nebula-desktop.grid", grid ? "1" : "0");
+    } catch {
+      // A convenience: it resets to one terminal next launch.
+    }
+  }, [grid]);
+  return [grid, setGrid];
 }
 
 /** Keeps `state.minute` current, for views that expire with the clock. */

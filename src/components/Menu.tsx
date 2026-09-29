@@ -7,6 +7,8 @@ export interface MenuItem {
   destructive?: boolean;
   /** A rule above this item, between groups. */
   separated?: boolean;
+  /** Its shortcut where the menu was opened, shown at the right. */
+  keys?: string;
 }
 
 /** A context menu at the pointer, the way macOS menus behave: arrow keys
@@ -79,7 +81,13 @@ export function ContextMenu({
         else if (e.key === "End") setHover(items.length - 1);
         else if (e.key === "Enter" || e.key === " ") pick(hover);
         else if (e.key === "Escape" || e.key === "Tab") onClose();
-        else return;
+        else {
+          // An item's own shortcut picks it from the open menu too.
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          const i = items.findIndex((it) => it.keys && it.keys.toLowerCase() === e.key.toLowerCase());
+          if (i < 0) return;
+          pick(i);
+        }
         e.preventDefault();
         e.stopPropagation();
       }}
@@ -95,6 +103,7 @@ export function ContextMenu({
             onClick={() => pick(i)}
           >
             {item.label}
+            {item.keys && <kbd className="menu-keys">{item.keys}</kbd>}
           </button>
         </div>
       ))}
