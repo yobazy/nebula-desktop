@@ -105,11 +105,13 @@ function Band({
   return (
     <section className="band">
       <header className="band-head">
-        <span className="band-branch" title={worktree.path}>
-          <BranchGlyph />
-          {worktree.branch}
+        <span className="band-title">
+          <span className="band-branch" title={worktree.path}>
+            <BranchGlyph />
+            <span className="band-branch-name" dir="auto">{worktree.branch}</span>
+          </span>
+          {worktree.is_main && <span className="band-note">main checkout</span>}
         </span>
-        {worktree.is_main && <span className="band-note">main checkout</span>}
         <span className="band-actions">
           {git && !("error" in git) && <ShipButton worktree={worktree} git={git} />}
           {!worktree.is_main && <BandRunButton worktree={worktree} />}
@@ -265,8 +267,6 @@ function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
   if (!kind || !git.branch) return null;
   const branch = git.branch;
   const taker = takerFor(state, worktree.id);
-  // On the main checkout the push lands straight on main: say so.
-  const label = worktree.is_main && kind !== "resolve" ? `${SHIP_LABEL[kind]} ${branch}` : SHIP_LABEL[kind];
   const blocked = taker.kind === "busy" || sending;
   const why =
     taker.kind === "busy"
@@ -301,7 +301,7 @@ function ShipButton({ worktree, git }: { worktree: Worktree; git: GitStatus }) {
         }}
       >
         <UpGlyph />
-        {sending ? "Sending…" : label}
+        {sending ? "Sending…" : SHIP_LABEL[kind]}
       </button>
       <span className="sr-only" aria-live="polite">
         {sending ? `Sending to ${taker.kind === "agent" ? taker.agent.name : "a new agent"}` : ""}

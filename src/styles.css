@@ -526,14 +526,35 @@ body.is-resizing * {
   gap: 8px;
   padding: 6px 8px;
 }
+/* In a narrow band head the branch name is what must stay readable: the
+   "main checkout" note wraps onto a clipped second line, so it drops out
+   whole first; then the name truncates, never past its first few letters. */
+.band-title {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  /* The glyph, the gap, and about "main"'s width of name. Spare room in a
+     short name lands before the actions, which sit right anyway. */
+  min-width: calc(12px + 6px + 4ch);
+  height: 24px;
+  overflow: hidden;
+}
 .band-branch {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
+  height: 24px;
+  min-width: 0;
   font-weight: 600;
   color: var(--text);
-  min-width: 0;
   white-space: nowrap;
+}
+/* Its own box: text straight inside the flex container can't take an ellipsis,
+   so a long name was clipped mid-letter. */
+.band-branch-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -542,6 +563,8 @@ body.is-resizing * {
   flex: none;
 }
 .band-note {
+  flex: none;
+  line-height: 24px;
   color: var(--faint);
   font-size: 12px;
   white-space: nowrap;
@@ -1931,20 +1954,6 @@ td.task-last {
 }
 .column-terminal .pane-head {
   padding-left: calc(20px + var(--reveal-pad, 0px));
-}
-
-/* In a narrow band head the branch name is what must stay readable: the
-   "main checkout" note gives way first, then the name truncates — never
-   to nothing. */
-.band-branch {
-  flex: 0 1 auto;
-  min-width: 52px;
-}
-.band-note {
-  flex: 0 4 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ---------- project icons ---------- */
