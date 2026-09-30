@@ -16,6 +16,8 @@ import { sessionKey } from "./types";
 // ---- requests ----
 
 let nextReqId = 1;
+/** Long enough for a slow `git worktree add`, short enough to notice a hung daemon. */
+const REQUEST_TIMEOUT_MS = 60_000;
 const pending = new Map<
   number,
   { resolve: (created: EntityId | null) => void; reject: (e: Error) => void }
@@ -89,8 +91,23 @@ export function request(
 ): Promise<EntityId | null> {
   const req_id = nextReqId++;
   return new Promise((resolve, reject) => {
-    pending.set(req_id, { resolve, reject });
+    // A daemon that never answers would leave the caller waiting forever.
+    const timer = setTimeout(() => {
+      if (!pending.delete(req_id)) return;
+      reject(new Error("The daemon didn't answer in time. It may still be working, so check the task list before trying again."));
+    }, REQUEST_TIMEOUT_MS);
+    pending.set(req_id, {
+      resolve: (created) => {
+        clearTimeout(timer);
+        resolve(created);
+      },
+      reject: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    });
     send(variant, { ...body, req_id }).catch((e) => {
+      clearTimeout(timer);
       pending.delete(req_id);
       reject(new Error(String(e)));
     });
@@ -237,18 +254,25 @@ function handle(event: ServerEvent) {
   if ("Snapshot" in event) {
     const s = event.Snapshot;
     const agents = s.agents.map(held);
-    setState((prev) => ({
-      loaded: true,
-      snapshots: prev.snapshots + 1,
-      projects: byId(s.projects),
-      worktrees: byId(s.worktrees),
-      agents: byId(agents),
-      terminals: byId(s.terminals),
-      selectedProject:
-        prev.selectedProject && s.projects.some((p) => p.id === prev.selectedProject)
-          ? prev.selectedProject
-          : (s.projects[0]?.id ?? null),
-    }));
+    setState((prev) => {
+      const sel = prev.selectedSession;
+      const sessionLives =
+        sel && ("Agent" in sel ? agents.some((a) => a.id === sel.Agent) : s.terminals.some((t) => t.id === sel.Terminal));
+      return {
+        loaded: true,
+        snapshots: prev.snapshots + 1,
+        projects: byId(s.projects),
+        worktrees: byId(s.worktrees),
+        agents: byId(agents),
+        terminals: byId(s.terminals),
+        selectedProject:
+          prev.selectedProject && s.projects.some((p) => p.id === prev.selectedProject)
+            ? prev.selectedProject
+            : (s.projects[0]?.id ?? null),
+        // A session the daemon no longer has would leave the terminal pane attached to nothing.
+        selectedSession: sessionLives ? sel : null,
+      };
+    });
     updateBadge();
     debugLog(
       `snapshot: ${s.projects.length} projects, ${s.worktrees.length} worktrees, ${s.agents.length} agents`,
@@ -284,10 +308,26 @@ function handle(event: ServerEvent) {
       delete next[key];
       return next;
     };
-    if ("Project" in id) setState((s) => ({ projects: drop(s.projects, id.Project) }));
+    if ("Project" in id)
+      setState((s) => {
+        const projects = drop(s.projects, id.Project);
+        return {
+          projects,
+          selectedProject: s.selectedProject === id.Project ? (Object.keys(projects)[0] ?? null) : s.selectedProject,
+        };
+      });
     else if ("Worktree" in id) setState((s) => ({ worktrees: drop(s.worktrees, id.Worktree) }));
-    else if ("Agent" in id) setState((s) => ({ agents: drop(s.agents, id.Agent) }));
-    else if ("Terminal" in id) setState((s) => ({ terminals: drop(s.terminals, id.Terminal) }));
+    else if ("Agent" in id)
+      setState((s) => ({
+        agents: drop(s.agents, id.Agent),
+        selectedSession: s.selectedSession && "Agent" in s.selectedSession && s.selectedSession.Agent === id.Agent ? null : s.selectedSession,
+      }));
+    else if ("Terminal" in id)
+      setState((s) => ({
+        terminals: drop(s.terminals, id.Terminal),
+        selectedSession:
+          s.selectedSession && "Terminal" in s.selectedSession && s.selectedSession.Terminal === id.Terminal ? null : s.selectedSession,
+      }));
   } else if ("StatusChanged" in event) {
     const { agent: id, status, changed_at, unseen } = event.StatusChanged;
     const prev = getState().agents[id];
