@@ -24,7 +24,7 @@ export function DaemonGate() {
   const down = !loaded && link.state === "disconnected";
 
   useEffect(() => {
-    if (down) void nebulaStatus().then(setStatus);
+    if (down) void nebulaStatus().then(setStatus).catch((e) => setError(String(e)));
   }, [down]);
 
   if (!down) return null;
