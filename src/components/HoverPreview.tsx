@@ -4,7 +4,7 @@ import { projectOfWorktree, useAppState } from "../nebula/store";
 import { agentSpec, relativeTime, statusLabel } from "../nebula/status";
 import { findQuestion, lastRows, readScreen } from "../nebula/screen";
 import { useSessionCosts } from "../nebula/budget";
-import { money } from "../nebula/usage";
+import { money, sessionKey } from "../nebula/usage";
 
 const DELAY_MS = 450;
 const POLL_MS = 2_000;
@@ -92,7 +92,7 @@ function Preview({ id, rect }: { id: string; rect: DOMRect }) {
   const last = prompts[prompts.length - 1];
   const queued = state.queue[agent.id]?.length ?? 0;
   const question = screen ? findQuestion(screen) : null;
-  const cost = agent.session_id ? costs.get(agent.session_id) : undefined;
+  const cost = agent.session_id ? costs.get(sessionKey(agent.kind, agent.session_id)) : undefined;
 
   // Beside the row, on whichever side has room, kept inside the window.
   const left = rect.right + 10 + WIDTH < window.innerWidth ? rect.right + 10 : Math.max(8, rect.left - WIDTH - 10);

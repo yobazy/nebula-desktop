@@ -357,14 +357,15 @@ export function mockGitStatus(worktreeId: string): GitStatus {
 export function mockUsage(): UsageReport {
   const hourNow = Math.floor(now / 3_600_000) * 3600;
   const cwdOf = (a: Agent) => worktrees.find((w) => w.id === a.worktree_id)?.path ?? "/tmp";
-  const sessions: { session: string; cwd: string; model: string; weight: number }[] = [
+  const sessions: { session: string; cwd: string; model: string; source: Agent["kind"]; weight: number }[] = [
     ...agents.map((a, i) => ({
       session: `s-${a.id}`,
       cwd: cwdOf(a),
-      model: a.kind === "codex" ? "claude-sonnet-5" : i % 3 === 0 ? "claude-fable-5-1" : "claude-opus-5-5",
+      source: a.kind,
+      model: a.kind === "codex" ? "gpt-6-astra" : i % 3 === 0 ? "claude-fable-5-1" : "claude-opus-5-5",
       weight: [5, 9, 3, 6, 2, 7, 1, 4, 0.5, 1.5, 0.8][i] ?? 1,
     })),
-    { session: "0f3a9c12-outside", cwd: "/Users/dev/scratch/notes", model: "claude-haiku-4-5", weight: 1 },
+    { source: "claude", session: "0f3a9c12-outside", cwd: "/Users/dev/scratch/notes", model: "claude-haiku-4-5", weight: 1 },
   ];
   // A deterministic wobble instead of Math.random, so the preview is stable.
   const wobble = (n: number) => ((Math.sin(n * 12.9898) * 43758.5453) % 1 + 1) % 1;
@@ -383,17 +384,24 @@ export function mockUsage(): UsageReport {
         hour,
         session: s.session,
         cwd: s.cwd,
+        source: s.source,
         model: s.model,
         input: Math.round(400 * scale),
         output: Math.round(9_000 * scale),
         cacheWrite5m: 0,
-        cacheWrite1h: Math.round(40_000 * scale),
+        cacheWrite1h: s.source === "claude" ? Math.round(40_000 * scale) : 0,
         cacheRead: Math.round(600_000 * scale),
         responses: Math.round(12 * scale) + 1,
       });
     });
   }
-  return { root: "~/.claude/projects", files: 42, buckets: buckets.sort((a, b) => a.hour - b.hour) };
+  return { sources: [
+    { source: "claude", roots: ["~/.claude/projects"], files: 36, status: "available" },
+    { source: "codex", roots: ["~/.codex/sessions"], files: 6, status: "available" },
+    { source: "pi", roots: ["~/.pi/agent/sessions"], files: 0, status: "empty" },
+    { source: "open_code", roots: ["~/.local/share/opencode/opencode.db"], files: 0, status: "empty" },
+    ...(["cursor", "muse", "grok", "custom"] as const).map((source) => ({ source, roots: [], files: 0, status: "unsupported" as const })),
+  ], files: 42, buckets: buckets.sort((a, b) => a.hour - b.hour) };
 }
 
 /** A small change set per demo worktree, as git.rs would report it. */

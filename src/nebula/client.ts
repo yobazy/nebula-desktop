@@ -12,6 +12,7 @@ import type {
   SessionRef,
 } from "./types";
 import { sessionKey } from "./types";
+import { disconnectedAgents, withSessionStatus } from "./sessionStatus";
 
 // ---- requests ----
 
@@ -222,6 +223,7 @@ function decode(b64: string): Uint8Array {
 /** An agent row from the daemon, kept waiting on you while limits.ts holds
  *  it at a usage limit: until the daemon has status news of its own. */
 function held(a: Agent): Agent {
+  a = withSessionStatus(a);
   const hit = getState().limits[a.id];
   if (!hit) return a;
   if (a.status === "running" && a.status_changed_at === hit.since) return { ...a, status: "needs_feedback" };
@@ -311,6 +313,14 @@ function handle(event: ServerEvent) {
 let started = false;
 let retry: ReturnType<typeof setTimeout> | null = null;
 
+function setLink(link: LinkState) {
+  setState((s) => ({
+    link,
+    ...(link.state === "disconnected" ? { agents: disconnectedAgents(s.agents) } : {}),
+  }));
+  if (link.state === "disconnected") updateBadge();
+}
+
 async function tryConnect() {
   retry = null;
   try {
@@ -319,7 +329,7 @@ async function tryConnect() {
   } catch (e) {
     const reason = String(e);
     if (reason === "already connected") return;
-    setState({ link: { state: "disconnected", reason } });
+    setLink({ state: "disconnected", reason });
     scheduleRetry();
   }
 }
@@ -345,7 +355,7 @@ export async function start() {
     handler?.(e.payload, decode(e.payload.data));
   });
   await listen<LinkState>("nebula://link", (e) => {
-    setState({ link: e.payload });
+    setLink(e.payload);
     if (e.payload.state === "disconnected") {
       for (const p of pending.values()) p.reject(new Error(e.payload.reason));
       pending.clear();

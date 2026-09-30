@@ -4,7 +4,7 @@
 // usage chip turns amber, then red. Also what each task and branch has
 // cost, for the rows that show it.
 import { useEffect, useMemo } from "react";
-import { costOf, summarize, type UsageReport } from "./usage";
+import { costOf, sessionKey, summarize, type UsageReport } from "./usage";
 import { flash, getState, subscribe, useAppState, type State } from "./store";
 import { notify } from "./notify";
 import { money } from "./usage";
@@ -96,11 +96,15 @@ export function useBudgetWatch() {
   }, []);
 }
 
-/** Cost per Claude Code session over the report's range (30 days). */
+/** Known cost per agent session over the report's range (30 days). */
 export function costBySession(report: UsageReport | null): Map<string, number> {
   const out = new Map<string, number>();
   if (!report) return out;
-  for (const b of report.buckets) out.set(b.session, (out.get(b.session) ?? 0) + costOf(b, b.model));
+  for (const b of report.buckets) {
+    const cost = costOf(b, b.model);
+    const key = sessionKey(b.source, b.session);
+    if (cost !== null) out.set(key, (out.get(key) ?? 0) + cost);
+  }
   return out;
 }
 

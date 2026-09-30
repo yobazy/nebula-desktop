@@ -639,7 +639,27 @@ body.is-resizing * {
 .row-needs_feedback .row-name {
   font-weight: 650;
 }
+.row-detail {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.row-agent {
+  flex: 0 0 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.row-detail-separator {
+  flex: none;
+}
 .row-prompt {
+  min-width: 0;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
@@ -3278,4 +3298,47 @@ button.attempt-status:hover span:nth-child(2) {
   outline-offset: -6px;
   border-radius: var(--r-md);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+/* Agent usage keeps collection gaps visible alongside measured totals. */
+.usage-controls select {
+  max-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.usage-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 6px;
+}
+.usage-source {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--raised);
+  text-align: left;
+  color: var(--text);
+}
+.usage-source:hover { border-color: var(--muted); }
+.usage-source.is-selected { border-color: var(--accent); }
+.usage-source-name { font-weight: 500; }
+.usage-source-cost { font-variant-numeric: tabular-nums; }
+.usage-source-status {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-agent {
+  display: block;
+  color: var(--text);
+  font-family: var(--ui);
+  margin-bottom: 2px;
 }

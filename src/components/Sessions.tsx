@@ -8,7 +8,7 @@ import {
   worktreeAgents,
   worktreeTerminals,
 } from "../nebula/store";
-import { agentSpec, lastPrompt, relativeTime, statusLabel } from "../nebula/status";
+import { agentSpec, KIND_LABEL, lastPrompt, relativeTime, statusLabel } from "../nebula/status";
 import { request } from "../nebula/client";
 import { changedFiles, neverPushed, shipKind, type GitState, type GitStatus } from "../nebula/git";
 import { runOnWorktree, SHIP_LABEL, shipPrompt, shipWhat, takerFor } from "../nebula/actions";
@@ -17,7 +17,7 @@ import { PrLine } from "./Pr";
 import { useHoverPreview } from "./HoverPreview";
 import { fanOutOf, openCompare } from "../nebula/fanout";
 import { useSessionCosts } from "../nebula/budget";
-import { money } from "../nebula/usage";
+import { money, sessionKey } from "../nebula/usage";
 import { EditorButton } from "./Editor";
 import { openReview } from "../nebula/diff";
 import { useRowMenu, type Seed } from "./RowMenu";
@@ -225,17 +225,17 @@ function rank(ids: string[], id: string): number {
   return i < 0 ? ids.length : i;
 }
 
-/** What this branch's tasks have cost (30 days), from Claude Code's logs. */
+/** What this branch's tasks have cost (30 days), from local agent logs. */
 function BandCost({ worktreeId }: { worktreeId: string }) {
   const state = useAppState();
   const costs = useSessionCosts();
   let total = 0;
   for (const a of Object.values(state.agents)) {
-    if (a.worktree_id === worktreeId && a.session_id) total += costs.get(a.session_id) ?? 0;
+    if (a.worktree_id === worktreeId && a.session_id) total += costs.get(sessionKey(a.kind, a.session_id)) ?? 0;
   }
   if (total < 0.01) return null;
   return (
-    <span className="band-cost" title="What this branch's Claude tasks have cost in the last 30 days, at API rates">
+    <span className="band-cost" title="Known estimated cost for this branch’s tasks over the last 30 days">
       {money(total)}
     </span>
   );
@@ -407,6 +407,7 @@ function AgentRow({
   const state = useAppState();
   const selected = sameSession(state.selectedSession, { Agent: agent.id });
   const prompt = lastPrompt(agent);
+  const detail = prompt || [agent.model, agent.effort].filter(Boolean).join(", ");
   const pinned = !agent.archived && isPinned(state, agent);
   const flagged = isFollowUp(state, agent.id);
   const colorStyle = useTaskColorStyle(agent);
@@ -434,7 +435,17 @@ function AgentRow({
       />
       <span className="row-main">
         <span className="row-name">{agent.name}</span>
-        <span className="row-prompt">{prompt ?? agentSpec(agent)}</span>
+        <span className="row-detail">
+          <span className="row-agent" title={agentSpec(agent)}>
+            {agent.custom_harness ?? KIND_LABEL[agent.kind]}
+          </span>
+          {detail && (
+            <>
+              <span className="row-detail-separator" aria-hidden>·</span>
+              <span className="row-prompt">{detail}</span>
+            </>
+          )}
+        </span>
       </span>
       <span className="row-age">
         {flagged && (

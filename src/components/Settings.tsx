@@ -485,7 +485,7 @@ const SHORTCUTS: [string, string][] = [
   ["⌘P", "Filter projects"],
   ["⌘1 – ⌘9", "Jump to a project"],
   ["⌘J", "Next session waiting on you"],
-  ["⌘U", "Claude usage"],
+  ["⌘U", "Agent usage"],
   ["⌘,", "Settings"],
   ["⌘B", "Hide or show the projects sidebar"],
   ["⌥⌘B", "Hide or show the tasks column"],

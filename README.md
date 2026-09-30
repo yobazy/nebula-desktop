@@ -77,13 +77,31 @@ it would do without changing anything, and `--help` lists the other options.
   worktree's run terminal. Once the dev server prints its address, the band shows it as a link.
 - No run command yet? Type one, or ask an agent to work it out and write `.nebula.json`.
 
-**Claude usage** (`⌘U`)
+**Agent usage** (`⌘U`)
 
 ![Claude usage: spend in the current 5-hour window, today and this week, by project, per day, and the heaviest tasks](docs/screenshots/usage.jpg)
 
-Read from Claude Code's own logs on your Mac and priced at API rates: the current 5-hour window,
-today, 7 or 30 days, by project and by task, and day by day. Click a task to open it. Your plan's
-limits aren't recorded locally, so this shows what you spent, not a percentage of your cap.
+Usage across Claude Code, Codex, Pi, and OpenCode: today, 7 or 30 days, by agent, project,
+task, and day. Click an agent to filter or a task to open it. The sidebar shows today's known
+cost across agents. Recent activity covers the current hour and the previous four hours;
+it is not a provider's quota window.
+
+The collectors read local histories without modifying them:
+
+- Claude Code: `~/.claude/projects` (or `CLAUDE_CONFIG_DIR/projects`).
+- Codex: `~/.codex/sessions` and `archived_sessions` (or under `CODEX_HOME`).
+- Pi: `~/.pi/agent/sessions` (or `PI_CODING_AGENT_DIR/sessions`).
+- OpenCode: `~/.local/share/opencode/opencode.db` (or under `XDG_DATA_HOME`), read-only.
+  Both `message` and `session_message` database schemas are supported; legacy JSON storage is not.
+
+Pi and OpenCode supply recorded costs; other costs use known standard model rates. Unknown
+models still count toward token totals and show as unpriced, rather than receiving a guessed
+rate. Budgets use known costs only. These estimates are not subscription charges or plan caps.
+Service tiers, long-context premiums, and other provider charges can differ.
+
+Cursor, Muse, Grok, and custom-agent usage is not collected yet. Their status is explicitly
+shown in the window, alongside missing histories and read errors, so missing usage isn't
+presented as measured zero usage.
 
 **Settings** (`⌘,`)
 
@@ -142,7 +160,8 @@ handy for styling, and needs no daemon. The screenshots and the demo above are f
 - `src-tauri/src/daemon.rs`: the socket connection. It forwards daemon events to the webview,
   with terminal output sent separately as base64.
 - `src-tauri/src/git.rs`: a checkout's git state (the daemon doesn't report it).
-- `src-tauri/src/usage.rs`: reads Claude Code's session logs incrementally into hourly buckets.
+- `src-tauri/src/usage.rs` and `usage_sources.rs`: collect local agent usage into hourly buckets.
+- `src/nebula/usageData.ts`: pricing and attribution; `npm run test:usage` runs its tests (Node 22+).
 - `src-tauri/src/settings.rs`: writes nebula's settings the way the TUI does.
 - `src/nebula/`: typed protocol mirror, store, client (request/Ack routing), notifications, and
   the git, usage, runs, settings and theme logic.

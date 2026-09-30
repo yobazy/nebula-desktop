@@ -113,7 +113,7 @@ function build(s: State, ctx: PaletteContext): Item[] {
     if (left.length >= 2) act(`compare:${f.id}`, `Compare ${left.length} attempts`, () => openCompare(f.id), undefined, f.prompt);
   }
   act("grid", "Watch tasks in a grid", ctx.toggleGrid, "⌘G");
-  act("usage", "Claude usage", () => setState({ view: "usage" }), "⌘U");
+  act("usage", "Agent usage", () => setState({ view: "usage" }), "⌘U");
   act("settings", "Settings", () => setState({ view: "settings" }), "⌘,");
   act("add", "Add a project", ctx.addProject, "⌘O");
   act("projects", "Hide or show projects", ctx.toggleProjects, "⌘B");
