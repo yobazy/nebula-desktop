@@ -18,7 +18,7 @@ import { useRunWatch } from "./nebula/runs";
 import { useLimitWatch } from "./nebula/limits";
 import { useProjectSessions } from "./nebula/focus";
 import { useProjectLogos } from "./nebula/icons";
-import { getState, setState, subscribe, useAppState, waitingAgents } from "./nebula/store";
+import { flash, getState, setState, subscribe, useAppState, waitingAgents } from "./nebula/store";
 import { usePrPolling } from "./nebula/prs";
 import { useQueueRunner } from "./nebula/queue";
 import { ReviewView } from "./components/Review";
@@ -34,14 +34,18 @@ import { TextDialog, type TextDialogSpec } from "./components/Dialogs";
 
 export default function App() {
   const [launch, setLaunch] = useState<{ worktree: string | null; seed?: Seed; pickProject?: boolean } | null>(null);
-  const openLaunch = useCallback(
-    (worktree?: string, seed?: Seed) => setLaunch({ worktree: worktree ?? null, seed }),
-    [],
-  );
+  // Each opening is a new dialog (see the key below), never an update to one
+  // that is already mounted.
+  const [launchKey, setLaunchKey] = useState(0);
+  const openLaunch = useCallback((worktree?: string, seed?: Seed) => {
+    setLaunchKey((k) => k + 1);
+    setLaunch({ worktree: worktree ?? null, seed });
+  }, []);
   // Quick capture (the global hotkey, the menu bar): from anywhere, so the
   // project is picked in the dialog.
   const openCapture = useCallback(() => {
     setState({ view: "sessions" });
+    setLaunchKey((k) => k + 1);
     setLaunch({ worktree: null, pickProject: true });
   }, []);
   const openAgent = useCallback((id: string) => {
@@ -53,7 +57,9 @@ export default function App() {
 
   const [addStep, setAddStep] = useState<AddStep | null>(null);
   const openAddProject = useCallback(() => {
-    void addProject().then(setAddStep);
+    void addProject()
+      .then(setAddStep)
+      .catch((e) => flash(`Couldn't open the folder picker: ${e instanceof Error ? e.message : String(e)}`));
   }, []);
 
   useEffect(() => {
@@ -118,7 +124,8 @@ export default function App() {
         setGrid((g) => !g);
       } else if (e.key === "n") {
         e.preventDefault();
-        if (getState().selectedProject) openLaunch();
+        if (Object.keys(getState().projects).length) openLaunch();
+        else flash("Add a project first (⌘O).");
       } else if (e.code === "KeyB") {
         e.preventDefault();
         if (e.altKey) setHideTasks((h) => !h);
@@ -193,6 +200,7 @@ export default function App() {
       {view === "compare" && <CompareView />}
       {launch && (
         <LaunchDialog
+          key={launchKey}
           initialWorktree={launch.worktree}
           seed={launch.seed}
           pickProject={launch.pickProject}

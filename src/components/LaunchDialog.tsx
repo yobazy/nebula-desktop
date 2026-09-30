@@ -39,7 +39,11 @@ export function LaunchDialog({
 }) {
   const state = useAppState();
   const projects = useMemo(() => sortedProjects(state), [state]);
-  const [projectId, setProjectId] = useState(state.selectedProject ?? projects[0]?.id ?? null);
+  // Derived on every render rather than frozen at mount, so a selection that
+  // changes (or was stale when the dialog opened) can't leave it blank.
+  const [pickedProject, setPickedProject] = useState<string | null>(null);
+  const projectId =
+    [pickedProject, state.selectedProject].find((id) => id && state.projects[id]) ?? projects[0]?.id ?? null;
   const project = projectId ? state.projects[projectId] : undefined;
   const worktrees = useMemo(
     () => (projectId ? projectWorktrees(state, projectId) : []),
@@ -61,13 +65,17 @@ export function LaunchDialog({
   const taskBox = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    void readSettings().then((s) => {
-      setSettings(s);
-      if (!seed) setKind(defaultKind(s));
-      setKinds([seed?.kind ?? defaultKind(s)]);
-      if (s.quick_prompt_new_worktree === true && !initialWorktree) setWhere(NEW_WORKTREE);
-    });
-    void readPresets().then(setPresets);
+    void readSettings()
+      .then((s) => {
+        setSettings(s);
+        if (!seed) setKind(defaultKind(s));
+        setKinds([seed?.kind ?? defaultKind(s)]);
+        if (s.quick_prompt_new_worktree === true && !initialWorktree) setWhere(NEW_WORKTREE);
+      })
+      .catch(() => setKinds([seed?.kind ?? "claude"]));
+    void readPresets()
+      .then(setPresets)
+      .catch(() => {});
     taskBox.current?.focus();
   }, [initialWorktree]);
 
@@ -138,6 +146,13 @@ export function LaunchDialog({
     }
   }
 
+  // Nothing to start a task in: say so rather than leaving an invisible dialog open.
+  useEffect(() => {
+    if (project) return;
+    flash("Add a project first (⌘O).");
+    onClose();
+  }, [project, onClose]);
+
   if (!project) return null;
 
   return (
@@ -158,7 +173,7 @@ export function LaunchDialog({
             <select
               value={project.id}
               onChange={(e) => {
-                setProjectId(e.target.value);
+                setPickedProject(e.target.value);
                 setWhere(projectWorktrees(state, e.target.value)[0]?.id ?? NEW_WORKTREE);
               }}
               aria-label="Project"
