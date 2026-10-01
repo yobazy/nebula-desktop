@@ -166,6 +166,27 @@ export function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
   return Object.fromEntries(rows.map((r) => [r.id, r]));
 }
 
+/** The state with a removed project gone, and everything under it: the
+ *  daemon's database drops its worktrees, tasks and shells in the same
+ *  delete but only says the project went. */
+export function withoutProject(s: State, id: string): Partial<State> {
+  const projects = { ...s.projects };
+  delete projects[id];
+  const worktrees = Object.fromEntries(Object.entries(s.worktrees).filter(([, w]) => w.project_id !== id));
+  const agents = Object.fromEntries(Object.entries(s.agents).filter(([, a]) => a.worktree_id in worktrees));
+  const terminals = Object.fromEntries(Object.entries(s.terminals).filter(([, t]) => t.worktree_id in worktrees));
+  const sel = s.selectedSession;
+  const kept = !sel || ("Agent" in sel ? sel.Agent in agents : sel.Terminal in terminals);
+  return {
+    projects,
+    worktrees,
+    agents,
+    terminals,
+    selectedProject: s.selectedProject === id ? (sortedProjects({ ...s, projects })[0]?.id ?? null) : s.selectedProject,
+    selectedSession: kept ? sel : null,
+  };
+}
+
 // ---- derived views ----
 
 /** Projects in the order dragged into (prefs.projectOrder), the rest after
