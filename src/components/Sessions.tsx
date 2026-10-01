@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   flash,
   getState,
@@ -23,7 +23,7 @@ import { openReview } from "../nebula/diff";
 import { useRowMenu, type Seed } from "./RowMenu";
 import { PanelGlyph } from "./Sidebar";
 import { ProjectIcon, useProjectColorStyle } from "./ProjectIcon";
-import { sameSession, type Agent, type TerminalTab, type Worktree } from "../nebula/types";
+import { sameSession, type Agent, type SessionRef, type TerminalTab, type Worktree } from "../nebula/types";
 import { isFollowUp, isPinned, moveTask, toggleFlag } from "../nebula/organize";
 import { FlagGlyph, PinGlyph, useTaskColorStyle } from "./Organize";
 import { reorderKey, useReorder } from "./useReorder";
@@ -39,6 +39,32 @@ function useMinuteTick() {
 
 type NewTask = (worktree?: string, seed?: Seed) => void;
 
+/** A search's words, each of which must appear somewhere in a row. */
+function searchTerms(query: string): string[] {
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function matches(terms: string[], ...parts: (string | null | undefined)[]): boolean {
+  const text = parts.filter(Boolean).join("\n").toLowerCase();
+  return terms.every((t) => text.includes(t));
+}
+
+/** A task matches on its name, prompts, agent, model or branch. */
+function agentMatches(a: Agent, wt: Worktree, terms: string[]): boolean {
+  return matches(
+    terms,
+    a.name,
+    a.custom_harness ?? KIND_LABEL[a.kind],
+    a.model,
+    wt.branch,
+    ...a.recent_prompts.map((p) => p.text),
+  );
+}
+
+function terminalMatches(t: TerminalTab, wt: Worktree, terms: string[]): boolean {
+  return matches(terms, t.name, t.run_command, wt.branch);
+}
+
 export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: () => void }) {
   const state = useAppState();
   useMinuteTick();
@@ -50,6 +76,35 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
     () => (project ? projectWorktrees(state, project.id) : []),
     [state, project],
   );
+  const [query, setQuery] = useState("");
+  const searchBox = useRef<HTMLInputElement>(null);
+  const terms = useMemo(() => searchTerms(query), [query]);
+  // A search belongs to the project it was typed in.
+  useEffect(() => setQuery(""), [project?.id]);
+  // The first row a search shows, top to bottom: Enter opens it.
+  const firstMatch = useMemo((): SessionRef | null => {
+    if (!terms.length) return null;
+    for (const wt of worktrees) {
+      const agents = [...worktreeAgents(state, wt.id), ...worktreeAgents(state, wt.id, true)];
+      const a = agents.find((a) => agentMatches(a, wt, terms));
+      if (a) return { Agent: a.id };
+      const t = worktreeTerminals(state, wt.id).find((t) => terminalMatches(t, wt, terms));
+      if (t) return { Terminal: t.id };
+    }
+    return null;
+  }, [state, worktrees, terms]);
+
+  // ⌘F finds a task, unless usage or settings lie over the list.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.altKey || e.ctrlKey || e.key !== "f" || getState().view !== "sessions") return;
+      e.preventDefault();
+      searchBox.current?.focus();
+      searchBox.current?.select();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   if (!project) {
     return (
@@ -86,10 +141,52 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
         </div>
       </header>
 
+      <div className="sessions-search">
+        <input
+          ref={searchBox}
+          type="search"
+          placeholder="Search tasks"
+          aria-label="Search tasks"
+          aria-keyshortcuts="Meta+F"
+          title="Search tasks by name, prompt, agent, model or branch (⌘F)"
+          spellCheck={false}
+          autoComplete="off"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (query) setQuery("");
+              else e.currentTarget.blur();
+            } else if (e.key === "Enter" && firstMatch) {
+              e.preventDefault();
+              setState({ selectedSession: firstMatch });
+            }
+          }}
+        />
+        {query ? (
+          <button
+            className="sessions-search-clear"
+            title="Clear search (Esc)"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery("");
+              searchBox.current?.focus();
+            }}
+          >
+            ×
+          </button>
+        ) : (
+          <kbd>⌘F</kbd>
+        )}
+      </div>
+
       <div className="bands" onMouseOver={preview.onMouseOver} onMouseLeave={preview.onMouseLeave}>
         {worktrees.map((wt) => (
-          <Band key={wt.id} worktree={wt} onNewTask={onNewTask} onMenu={rowMenu.openFor} />
+          <Band key={wt.id} worktree={wt} terms={terms} onNewTask={onNewTask} onMenu={rowMenu.openFor} />
         ))}
+        {terms.length > 0 && !firstMatch && <p className="sessions-no-match">No tasks match “{query.trim()}”.</p>}
       </div>
       {rowMenu.element}
       {preview.element}
@@ -101,26 +198,33 @@ type OpenMenu = ReturnType<typeof useRowMenu>["openFor"];
 
 function Band({
   worktree,
+  terms,
   onNewTask,
   onMenu,
 }: {
   worktree: Worktree;
+  terms: string[];
   onNewTask: NewTask;
   onMenu: OpenMenu;
 }) {
   const state = useAppState();
   const [showArchived, setShowArchived] = useState(false);
+  // A filtered list is no order to drag rows into.
+  const searching = terms.length > 0;
   const reorder = useReorder((id, to, seen) => {
     const a = getState().agents[id];
     if (a) void moveTask(a, to, seen);
-  });
+  }, !searching);
   // Mid-drag, rows keep the order the drag began with.
   const sorted = worktreeAgents(state, worktree.id);
-  const agents = reorder.frozen
+  const ordered = reorder.frozen
     ? [...sorted].sort((a, b) => rank(reorder.frozen!, a.id) - rank(reorder.frozen!, b.id))
     : sorted;
-  const archived = worktreeAgents(state, worktree.id, true);
-  const terminals = worktreeTerminals(state, worktree.id);
+  const agents = searching ? ordered.filter((a) => agentMatches(a, worktree, terms)) : ordered;
+  const allArchived = worktreeAgents(state, worktree.id, true);
+  const archived = searching ? allArchived.filter((a) => agentMatches(a, worktree, terms)) : allArchived;
+  const allTerminals = worktreeTerminals(state, worktree.id);
+  const terminals = searching ? allTerminals.filter((t) => terminalMatches(t, worktree, terms)) : allTerminals;
   // Picking an archived task elsewhere (the follow-up list) shows it here;
   // archiving the open one leaves the list as it was.
   const selectedId = state.selectedSession && "Agent" in state.selectedSession ? state.selectedSession.Agent : null;
@@ -132,6 +236,10 @@ function Band({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedSession]);
   const git = state.git[worktree.id];
+
+  if (searching && !agents.length && !archived.length && !terminals.length) return null;
+  // A search shows the archived tasks it finds without being asked.
+  const archivedOpen = showArchived || searching;
 
   return (
     <section className="band">
@@ -181,7 +289,7 @@ function Band({
             <AgentRow
               agent={a}
               onMenu={onMenu}
-              onKeyDown={(e) => reorderKey(e, i, agents.length, (to) => void moveTask(a, to))}
+              onKeyDown={searching ? undefined : (e) => reorderKey(e, i, agents.length, (to) => void moveTask(a, to))}
             />
           </li>
         ))}
@@ -190,7 +298,7 @@ function Band({
             <TerminalRow tab={t} onMenu={onMenu} />
           </li>
         ))}
-        {agents.length === 0 && terminals.length === 0 && (
+        {!searching && agents.length === 0 && terminals.length === 0 && (
           <li className="rows-empty">
             <button className="link-btn" onClick={() => onNewTask(worktree.id)}>
               Start a task on this branch
@@ -201,10 +309,12 @@ function Band({
 
       {archived.length > 0 && (
         <>
-          <button className="archived-toggle" onClick={() => setShowArchived((v) => !v)}>
-            {showArchived ? "Hide" : "Show"} {archived.length} archived
-          </button>
-          {showArchived && (
+          {!searching && (
+            <button className="archived-toggle" onClick={() => setShowArchived((v) => !v)}>
+              {showArchived ? "Hide" : "Show"} {archived.length} archived
+            </button>
+          )}
+          {archivedOpen && (
             <ul className="rows rows-archived">
               {archived.map((a) => (
                 <li key={a.id}>

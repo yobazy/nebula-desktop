@@ -515,6 +515,53 @@ body.is-resizing * {
   user-select: text;
 }
 
+/* Like the project filter in the sidebar, a step darker than its panel. */
+.sessions-search {
+  position: relative;
+  margin: 10px 10px 2px;
+}
+.sessions-search input {
+  width: 100%;
+  background: var(--night);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 7px 40px 7px 10px;
+  outline: none;
+  user-select: text;
+}
+.sessions-search input::placeholder {
+  color: var(--faint);
+}
+.sessions-search input:focus {
+  border-color: var(--accent);
+}
+/* The clear button stands in for WebKit's own. */
+.sessions-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.sessions-search kbd,
+.sessions-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.sessions-search-clear {
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  color: var(--faint);
+  font-size: 15px;
+  line-height: 1;
+}
+.sessions-search-clear:hover {
+  color: var(--muted);
+}
+.sessions-no-match {
+  padding: 10px;
+  color: var(--faint);
+}
+
 .bands {
   flex: 1;
   overflow-y: auto;
