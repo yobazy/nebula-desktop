@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   flash,
   getState,
@@ -20,7 +20,7 @@ import { useSessionCosts } from "../nebula/budget";
 import { money, sessionKey } from "../nebula/usage";
 import { EditorButton } from "./Editor";
 import { openReview } from "../nebula/diff";
-import { useRowMenu, type Seed } from "./RowMenu";
+import { setArchived, useRowMenu, type Seed } from "./RowMenu";
 import { PanelGlyph } from "./Sidebar";
 import { ProjectIcon, useProjectColorStyle } from "./ProjectIcon";
 import { sameSession, type Agent, type SessionRef, type TerminalTab, type Worktree } from "../nebula/types";
@@ -38,6 +38,11 @@ function useMinuteTick() {
 }
 
 type NewTask = (worktree?: string, seed?: Seed) => void;
+
+/** Tasks picked with ⇧-click (a range) or ⌘-click (one at a time), to act
+ *  on together. `click` handles a modified click and says if it did. */
+type Picks = { ids: Set<string>; click: (e: React.MouseEvent, id: string) => boolean };
+const PicksContext = createContext<Picks | null>(null);
 
 /** A search's words, each of which must appear somewhere in a row. */
 function searchTerms(query: string): string[] {
@@ -94,6 +99,56 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
     return null;
   }, [state, worktrees, terms]);
 
+  const bandsRef = useRef<HTMLDivElement>(null);
+  const [pickedIds, setPicked] = useState<Set<string>>(() => new Set());
+  // Where a ⇧-click range starts: the last row clicked without ⇧.
+  const anchor = useRef<string | null>(null);
+  const picked = useMemo(() => [...pickedIds].map((id) => state.agents[id]).filter(Boolean), [pickedIds, state.agents]);
+  const clearPicks = () => setPicked(new Set());
+  // Picks out of sight mustn't be acted on: a new project or search drops them.
+  useEffect(() => {
+    clearPicks();
+    anchor.current = null;
+  }, [project?.id, query]);
+  const openAgent = state.selectedSession && "Agent" in state.selectedSession ? state.selectedSession.Agent : null;
+  const picks: Picks = {
+    ids: pickedIds,
+    click: (e, id) => {
+      if (e.shiftKey) {
+        // The range runs in the order the rows are shown, across branches.
+        const rows = [...(bandsRef.current?.querySelectorAll<HTMLElement>("[data-agent]") ?? [])].map((el) => el.dataset.agent!);
+        const from = rows.indexOf(anchor.current ?? openAgent ?? id);
+        const to = rows.indexOf(id);
+        const range = from < 0 ? [id] : rows.slice(Math.min(from, to), Math.max(from, to) + 1);
+        setPicked(new Set(e.metaKey ? [...pickedIds, ...range] : range));
+        return true;
+      }
+      if (e.metaKey) {
+        anchor.current = id;
+        // The first ⌘-click keeps the open task in, as Finder keeps its selection.
+        const next = new Set(pickedIds.size || !openAgent || !state.agents[openAgent] ? pickedIds : [openAgent]);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setPicked(next);
+        return true;
+      }
+      anchor.current = id;
+      if (pickedIds.size) clearPicks();
+      return false;
+    },
+  };
+  // Esc lets go of the picks, unless it's meant for a terminal or a field.
+  useEffect(() => {
+    if (!pickedIds.size) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      if (e.key !== "Escape" || (el && el !== document.body && !el.closest(".bands"))) return;
+      clearPicks();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickedIds.size]);
+
   // ⌘F finds a task, unless usage or settings lie over the list.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -105,6 +160,12 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
+
+  // Right-clicking one of several picked tasks acts on all of them.
+  const onMenu: OpenMenu = (e, target) =>
+    "Agent" in target && pickedIds.has(target.Agent.id) && picked.length > 1
+      ? rowMenu.openForMany(e, picked, clearPicks)
+      : rowMenu.openFor(e, target);
 
   if (!project) {
     return (
@@ -182,12 +243,15 @@ export function Sessions({ onNewTask, onHide }: { onNewTask: NewTask; onHide: ()
         )}
       </div>
 
-      <div className="bands" onMouseOver={preview.onMouseOver} onMouseLeave={preview.onMouseLeave}>
+      <PicksContext.Provider value={picks}>
+      <div className="bands" ref={bandsRef} onMouseOver={preview.onMouseOver} onMouseLeave={preview.onMouseLeave}>
         {worktrees.map((wt) => (
-          <Band key={wt.id} worktree={wt} terms={terms} onNewTask={onNewTask} onMenu={rowMenu.openFor} />
+          <Band key={wt.id} worktree={wt} terms={terms} onNewTask={onNewTask} onMenu={onMenu} />
         ))}
         {terms.length > 0 && !firstMatch && <p className="sessions-no-match">No tasks match “{query.trim()}”.</p>}
       </div>
+      </PicksContext.Provider>
+      {picked.length > 1 && <PickBar agents={picked} onClear={clearPicks} />}
       {rowMenu.element}
       {preview.element}
     </section>
@@ -326,6 +390,38 @@ function Band({
         </>
       )}
     </section>
+  );
+}
+
+/** What can be done to the picked tasks, and how many there are. */
+function PickBar({ agents, onClear }: { agents: Agent[]; onClear: () => void }) {
+  const live = agents.filter((a) => !a.archived);
+  const gone = agents.filter((a) => a.archived);
+  const [busy, setBusy] = useState(false);
+  const run = (which: Agent[], archived: boolean) => {
+    setBusy(true);
+    void setArchived(which, archived).then(() => {
+      setBusy(false);
+      onClear();
+    });
+  };
+  return (
+    <div className="pick-bar" role="toolbar" aria-label="Selected tasks">
+      <span className="pick-count">{agents.length} selected</span>
+      {live.length > 0 && (
+        <button className="btn btn-sm" disabled={busy} onClick={() => run(live, true)}>
+          Archive{gone.length ? ` ${live.length}` : ""}
+        </button>
+      )}
+      {gone.length > 0 && (
+        <button className="btn btn-sm" disabled={busy} onClick={() => run(gone, false)}>
+          Unarchive{live.length ? ` ${gone.length}` : ""}
+        </button>
+      )}
+      <button className="btn btn-sm" onClick={onClear} title="Clear selection (Esc)">
+        Clear
+      </button>
+    </div>
   );
 }
 
@@ -521,13 +617,16 @@ function AgentRow({
   const pinned = !agent.archived && isPinned(state, agent);
   const flagged = isFollowUp(state, agent.id);
   const colorStyle = useTaskColorStyle(agent);
+  const picks = useContext(PicksContext);
+  const isPicked = picks?.ids.has(agent.id) ?? false;
   return (
     <button
-      className={`row row-${agent.status}${selected ? " is-selected" : ""}${agent.unseen ? " is-unseen" : ""}${colorStyle ? " has-color" : ""}`}
+      className={`row row-${agent.status}${selected ? " is-selected" : ""}${isPicked ? " is-picked" : ""}${agent.unseen ? " is-unseen" : ""}${colorStyle ? " has-color" : ""}`}
       data-agent={agent.id}
       style={colorStyle}
-      onClick={() => setState({ selectedSession: { Agent: agent.id } })}
+      onClick={(e) => picks?.click(e, agent.id) || setState({ selectedSession: { Agent: agent.id } })}
       onContextMenu={(e) => onMenu(e, { Agent: agent })}
+      aria-pressed={picks?.ids.size ? isPicked : undefined}
       onKeyDown={(e) => {
         // F flags the task to come back to, or clears the flag.
         if (e.key === "f" && e.target === e.currentTarget && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {

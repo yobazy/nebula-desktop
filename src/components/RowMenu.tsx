@@ -32,6 +32,18 @@ async function attempt(what: Promise<unknown>) {
   }
 }
 
+const tasks = (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`;
+
+/** Archive (or unarchive) several tasks at once, saying how many failed. */
+export async function setArchived(agents: Agent[], archived: boolean) {
+  const results = await Promise.allSettled(
+    agents.map((a) => request(archived ? "ArchiveAgent" : "UnarchiveAgent", { id: a.id })),
+  );
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length) flash(`Couldn't ${archived ? "archive" : "unarchive"} ${tasks(failed.length)}: ${errText((failed[0] as PromiseRejectedResult).reason)}`);
+  else flash(`${archived ? "Archived" : "Unarchived"} ${tasks(agents.length)}`);
+}
+
 /** Rename (auto): have Claude title the task from its prompts and the end
  *  of its terminal output, and rename it to that. */
 async function autoRename(agent: Agent) {
@@ -273,14 +285,29 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
     },
   ];
 
-  const openFor = (e: React.MouseEvent, target: { Agent: Agent } | { Terminal: TerminalTab }) => {
+  /** Where a menu opens: at the pointer, or by the row for the context-menu key. */
+  const at = (e: React.MouseEvent) => {
     e.preventDefault();
-    // The context-menu key has no pointer position: open by the row.
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX || r.left + 24;
-    const y = e.clientY || r.bottom;
+    return { x: e.clientX || r.left + 24, y: e.clientY || r.bottom };
+  };
+
+  const openFor = (e: React.MouseEvent, target: { Agent: Agent } | { Terminal: TerminalTab }) => {
+    const { x, y } = at(e);
     if ("Agent" in target) setMenu({ items: agentItems(target.Agent), x, y, label: `${target.Agent.name} actions` });
     else setMenu({ items: terminalItems(target.Terminal), x, y, label: `${target.Terminal.name} actions` });
+  };
+
+  /** The menu for several picked tasks: what can be done to all of them. */
+  const openForMany = (e: React.MouseEvent, agents: Agent[], clear: () => void) => {
+    const { x, y } = at(e);
+    const live = agents.filter((a) => !a.archived);
+    const gone = agents.filter((a) => a.archived);
+    const items: MenuItem[] = [];
+    if (live.length) items.push({ label: `Archive ${tasks(live.length)}`, run: () => void setArchived(live, true).then(clear) });
+    if (gone.length) items.push({ label: `Unarchive ${tasks(gone.length)}`, run: () => void setArchived(gone, false).then(clear) });
+    items.push({ label: "Clear selection", separated: true, run: clear });
+    setMenu({ items, x, y, label: `${tasks(agents.length)} selected` });
   };
 
   const element = (
@@ -298,5 +325,5 @@ export function useRowMenu(onDuplicate: (worktree: string, seed: Seed) => void) 
       )}
     </>
   );
-  return { openFor, element };
+  return { openFor, openForMany, element };
 }

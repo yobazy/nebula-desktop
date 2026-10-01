@@ -669,6 +669,28 @@ body.is-resizing * {
   background: var(--raised);
   box-shadow: inset 2px 0 0 var(--accent);
 }
+.row.is-picked {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.row.is-picked:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+/* Picked tasks' actions, pinned under the list. */
+.pick-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 10px;
+  padding: 8px 8px 8px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.pick-count {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
 .row-main {
   display: flex;
   flex-direction: column;
